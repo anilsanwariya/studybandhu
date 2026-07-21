@@ -179,14 +179,14 @@ function ProgressPage() {
           <span className="glass rounded-full text-xs font-medium px-3 py-1">{flatTopics.length} topics</span>
         </div>
 
-        <div className="overflow-x-auto -mx-2 px-2">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Topic</th>
                 <th className="py-2 pr-4 font-medium">Mastery</th>
-                <th className="py-2 pr-4 font-medium text-right">Revisions</th>
-                <th className="py-2 pr-4 font-medium text-right">Next due</th>
+                <th className="py-2 pr-4 font-medium text-right whitespace-nowrap">Revisions</th>
+                <th className="py-2 pr-4 font-medium text-right whitespace-nowrap">Next due</th>
               </tr>
             </thead>
             <tbody>
@@ -194,12 +194,12 @@ function ProgressPage() {
                 const b = masteryBadge(t.status, t.revisionCount ?? 0);
                 return (
                   <tr key={t.id} className="border-t border-white/40">
-                    <td className="py-2.5 pr-4 font-medium truncate max-w-[220px]">{t.title}</td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-4 font-medium max-w-[220px] truncate">{t.title}</td>
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.cls}`}>{b.label}</span>
                     </td>
-                    <td className="py-2.5 pr-4 tabular-nums text-right">{t.revisionCount ?? 0}×</td>
-                    <td className="py-2.5 pr-4 text-right text-muted-foreground">{nextDueLabel(t.nextRevisionAt)}</td>
+                    <td className="py-2.5 pr-4 tabular-nums text-right whitespace-nowrap">{t.revisionCount ?? 0}×</td>
+                    <td className="py-2.5 pr-4 text-right text-muted-foreground whitespace-nowrap">{nextDueLabel(t.nextRevisionAt)}</td>
                   </tr>
                 );
               })}
