@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil } from "lucide-react";
+import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil, SlidersHorizontal } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
