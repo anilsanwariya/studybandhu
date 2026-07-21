@@ -72,11 +72,11 @@ function TreeNode({ node, depth, onOpen }: { node: SyllabusNode; depth: number; 
     <div>
       <div
         className={cn(
-          "group flex items-center gap-2 rounded-2xl px-3 py-2.5 transition-all",
+          "group flex items-center gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all",
           "hover:bg-white/50 cursor-pointer",
           node.excluded && "opacity-40",
         )}
-        style={{ paddingLeft: `${depth * 20 + 12}px` }}
+        style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
         {hasChildren ? (
           <button onClick={() => setExpanded((e) => !e)} className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-white/60 shrink-0">
