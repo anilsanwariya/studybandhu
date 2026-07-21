@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Plus, LogOut, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles, X } from "lucide-react";
+import { Loader2, Plus, LogOut, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/")({
@@ -154,42 +154,6 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
 }
 
 
-function SchemaEditor({ schema, onChange }: { schema: string[]; onChange: (next: string[]) => void }) {
-  const [draft, setDraft] = useState("");
-  return (
-    <div className="glass rounded-2xl p-3">
-      <div className="text-xs font-semibold text-muted-foreground mb-2">Hierarchy levels (top → bottom)</div>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {schema.map((label, i) => (
-          <span key={`${label}-${i}`} className="inline-flex items-center gap-1 bg-white/70 rounded-full px-2.5 py-1 text-xs font-medium">
-            <span className="text-muted-foreground">L{i}</span>
-            {label}
-            <button className="ml-1 h-4 w-4 rounded-full hover:bg-destructive/20 hover:text-destructive flex items-center justify-center" onClick={() => onChange(schema.filter((_, idx) => idx !== i))} aria-label={`Remove ${label}`}>
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              onChange([...schema, draft.trim().toLowerCase()]);
-              setDraft("");
-            }
-          }}
-          placeholder="Add level (e.g. paper)"
-          className="h-8 bg-white/60 border-white/70 rounded-lg text-xs"
-        />
-        <Button size="sm" variant="outline" className="rounded-full h-8 bg-white/60" onClick={() => { if (draft.trim()) { onChange([...schema, draft.trim().toLowerCase()]); setDraft(""); } }}>
-          Add
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
