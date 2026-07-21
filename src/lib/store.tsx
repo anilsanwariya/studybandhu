@@ -19,7 +19,9 @@ interface SyllabusDbRow {
   title: string;
   node_type: string;
   sort_order: number;
+  depth: number;
 }
+
 
 interface StoreState {
   tree: SyllabusNode[];
