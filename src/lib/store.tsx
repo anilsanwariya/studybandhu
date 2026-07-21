@@ -98,15 +98,46 @@ function daysFromToday(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+interface PersistedNode {
+  status: Status;
+  dueToday: boolean;
+  revisionCount: number;
+  nextRevisionAt: string | null;
+  excluded?: boolean;
+  url?: string;
+  note?: string;
+}
+interface PersistedState {
+  nodes: Record<string, PersistedNode>;
+  bucket: string[];
+  xp: number;
+}
+
+const persistKey = (userId: string, examId: string) => `sb-progress-${userId}-${examId}`;
+
+function loadPersisted(userId: string, examId: string): PersistedState | null {
+  try {
+    const raw = localStorage.getItem(persistKey(userId, examId));
+    return raw ? (JSON.parse(raw) as PersistedState) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
   const [levelSchema, setLevelSchema] = useState<string[]>([]);
+  const [bucket, setBucket] = useState<string[]>([]);
+  const [streak] = useState(0);
+  const [xp, setXp] = useState(0);
+  const persistLoaded = useRef(false);
 
   // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
     const examId = user?.targetExamId;
+    persistLoaded.current = false;
     setBucket([]);
     if (!user || !examId) {
       setTree([]);
@@ -116,20 +147,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setSyllabusLoading(true);
     (async () => {
-      const { data, error } = await supabase
-        .from("syllabus_nodes")
-        .select("id, parent_id, title, node_type, sort_order, depth")
-        .eq("exam_id", examId)
-        .order("sort_order", { ascending: true })
-        .order("title", { ascending: true });
+      const [examRes, nodesRes] = await Promise.all([
+        supabase.from("exams").select("level_schema").eq("id", examId).maybeSingle(),
+        supabase
+          .from("syllabus_nodes")
+          .select("id, parent_id, title, node_type, sort_order, depth")
+          .eq("exam_id", examId)
+          .order("sort_order", { ascending: true })
+          .order("title", { ascending: true }),
+      ]);
       if (cancelled) return;
       setSyllabusLoading(false);
+      const schema = Array.isArray(examRes.data?.level_schema)
+        ? (examRes.data!.level_schema as string[])
+        : ["subject", "chapter", "topic", "subtopic"];
+      setLevelSchema(schema);
+      const { data, error } = nodesRes;
       if (error || !data || data.length === 0) {
         setTree([]);
         return;
       }
-      // Curation is at the top two levels of whatever schema the exam defines:
-      // depth 0 (L1) uses selected_subject_ids, depth 1 (L2) uses selected_chapter_ids.
       const selectedL1 = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
       const selectedL2 = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
       const hasL1 = selectedL1.size > 0;
@@ -140,27 +177,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         arr.push(row);
         byParent.set(row.parent_id, arr);
       }
+      const persisted = loadPersisted(user.id, examId);
+      const nodeMap = persisted?.nodes ?? {};
       const build = (parentId: string | null): SyllabusNode[] => {
         const rows = byParent.get(parentId) ?? [];
         return rows.flatMap((r) => {
           if (r.depth === 0 && hasL1 && !selectedL1.has(r.id)) return [];
           if (r.depth === 1 && hasL2 && !selectedL2.has(r.id)) return [];
+          const saved = nodeMap[r.id];
           return [
             {
               id: r.id,
               title: r.title,
               type: r.node_type,
               depth: r.depth,
-              status: "unread" as Status,
-              dueToday: false,
-              revisionCount: 0,
-              nextRevisionAt: null,
+              status: (saved?.status ?? "unread") as Status,
+              dueToday: saved?.dueToday ?? false,
+              revisionCount: saved?.revisionCount ?? 0,
+              nextRevisionAt: saved?.nextRevisionAt ?? null,
+              excluded: saved?.excluded,
+              url: saved?.url,
+              note: saved?.note,
               children: build(r.id),
             },
           ];
         });
       };
       setTree(build(null));
+      if (persisted) {
+        setBucket(persisted.bucket ?? []);
+        setXp(persisted.xp ?? 0);
+      } else {
+        setBucket([]);
+        setXp(0);
+      }
+      persistLoaded.current = true;
     })();
     return () => {
       cancelled = true;
@@ -175,12 +226,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     user?.selectedChapters,
   ]);
 
-  const [bucket, setBucket] = useState<string[]>([]);
-  const [streak] = useState(0);
-  const [xp, setXp] = useState(0);
+
   const [lastAward, setLastAward] = useState<XpAward | null>(null);
   const awardCounter = useRef(0);
   const dailyLimit = 7;
+
+  // Persist progress + bucket to localStorage on any change (after hydration).
+  useEffect(() => {
+    if (!persistLoaded.current) return;
+    const examId = user?.targetExamId;
+    if (!user || !examId) return;
+    const nodes: Record<string, PersistedNode> = {};
+    walk(tree, (n) => {
+      nodes[n.id] = {
+        status: n.status,
+        dueToday: !!n.dueToday,
+        revisionCount: n.revisionCount ?? 0,
+        nextRevisionAt: n.nextRevisionAt ?? null,
+        excluded: n.excluded,
+        url: n.url,
+        note: n.note,
+      };
+    });
+    try {
+      localStorage.setItem(
+        persistKey(user.id, examId),
+        JSON.stringify({ nodes, bucket, xp } satisfies PersistedState),
+      );
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [tree, bucket, xp, user]);
 
   // Trackable items are the leaves of the tree (whatever the exam's deepest level is called).
   const flatTopics = useMemo(() => {

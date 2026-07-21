@@ -129,7 +129,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
 
   useEffect(() => {
     if (isOpen && editMode && user) {
-      setStep(1);
+      setStep(2);
       setUsername(user.username ?? "");
       setUState(user.username ? "available" : "idle");
       setExamId(user.targetExamId ?? "");
@@ -327,14 +327,12 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 <Sparkles className="h-4 w-4 text-primary-foreground" />
               </div>
               <span className="text-xs font-semibold text-muted-foreground">
-                {editMode ? "Edit preferences · " : ""}Step {step} of 3
+                {editMode ? `Edit preferences · Step ${step - 1} of 2` : `Step ${step} of 3`}
               </span>
             </div>
             <DialogTitle className="text-2xl">
               {step === 1
-                ? editMode
-                  ? "Update username"
-                  : "Pick a username"
+                ? "Pick a username"
                 : step === 2
                   ? "What are you preparing for?"
                   : "Curate your syllabus"}
@@ -351,7 +349,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
           <div className="h-1.5 rounded-full bg-white/50 overflow-hidden mb-5">
             <div
               className="h-full bg-gradient-to-r from-[var(--mint)] via-[var(--sky)] to-[var(--lavender)] transition-all"
-              style={{ width: `${(step / 3) * 100}%` }}
+              style={{ width: `${editMode ? ((step - 1) / 2) * 100 : (step / 3) * 100}%` }}
             />
           </div>
 
@@ -585,7 +583,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 Cancel
               </Button>
             )}
-            {step > 1 && (
+            {step > 1 && !(editMode && step === 2) && (
               <Button
                 variant="outline"
                 className="rounded-full bg-white/60"

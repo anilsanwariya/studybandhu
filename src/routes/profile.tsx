@@ -1,11 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil, SlidersHorizontal } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, AtSign, SlidersHorizontal, Loader2, Check, X } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -22,9 +29,10 @@ function initials(name: string) {
 }
 
 function ProfilePage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateUser } = useAuth();
   const { streak, xp, flatTopics } = useStore();
   const [editOpen, setEditOpen] = useState(false);
+  const [usernameOpen, setUsernameOpen] = useState(false);
 
   if (!user) {
     return (
@@ -87,9 +95,9 @@ function ProfilePage() {
         <section className="glass-strong rounded-3xl p-6 lg:col-span-3">
           <h2 className="font-semibold text-lg mb-4">Account Settings</h2>
           <div className="grid sm:grid-cols-3 gap-3">
-            <Button onClick={() => setEditOpen(true)} variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Username, Exam & Syllabus</div>
-              <span className="text-xs text-muted-foreground font-normal">Re-run the onboarding wizard</span>
+            <Button onClick={() => setUsernameOpen(true)} variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
+              <div className="flex items-center gap-2 text-sm font-semibold"><AtSign className="h-3.5 w-3.5" /> Change Username</div>
+              <span className="text-xs text-muted-foreground font-normal">Pick a new @handle</span>
             </Button>
             <Button variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
               <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound className="h-3.5 w-3.5" /> Change Password</div>
@@ -107,6 +115,12 @@ function ProfilePage() {
         </section>
       </div>
       <OnboardingModal open={editOpen} onOpenChange={setEditOpen} editMode />
+      <ChangeUsernameDialog
+        open={usernameOpen}
+        onOpenChange={setUsernameOpen}
+        currentUsername={user.username ?? ""}
+        onSave={async (u) => { await updateUser({ username: u }); }}
+      />
     </AppShell>
   );
 }
@@ -136,5 +150,82 @@ function StatRow({ icon: Icon, tint, label, value }: { icon: any; tint: string; 
         <div className="text-sm font-semibold">{value}</div>
       </div>
     </div>
+  );
+}
+
+function ChangeUsernameDialog({
+  open, onOpenChange, currentUsername, onSave,
+}: { open: boolean; onOpenChange: (o: boolean) => void; currentUsername: string; onSave: (u: string) => Promise<void> }) {
+  const [value, setValue] = useState(currentUsername);
+  const [state, setState] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
+  const [saving, setSaving] = useState(false);
+
+  const onChange = (v: string) => {
+    setValue(v);
+    const trimmed = v.trim().toLowerCase();
+    if (!trimmed) { setState("idle"); return; }
+    if (trimmed === currentUsername) { setState("available"); return; }
+    if (trimmed.length < 3 || !/^[a-z0-9_]+$/.test(trimmed)) { setState("invalid"); return; }
+    setState("checking");
+    window.setTimeout(async () => {
+      const { data } = await supabase.from("profiles").select("user_id").eq("username", trimmed).maybeSingle();
+      setState(data ? "taken" : "available");
+    }, 300);
+  };
+
+  const save = async () => {
+    if (state !== "available") return;
+    setSaving(true);
+    try {
+      await onSave(value.trim().toLowerCase());
+      toast.success("Username updated");
+      onOpenChange(false);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (o) { setValue(currentUsername); setState("available"); } }}>
+      <DialogContent className="glass-strong border-white/60 rounded-3xl max-w-md">
+        <DialogHeader>
+          <DialogTitle>Change username</DialogTitle>
+          <DialogDescription>Letters, numbers, underscores. 3+ characters.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>Username</Label>
+          <div className="relative">
+            <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              maxLength={24}
+              className="pl-9 pr-10 glass rounded-2xl h-11 bg-white/60"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {state === "checking" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              {state === "available" && <Check className="h-4 w-4 text-emerald-600" />}
+              {(state === "taken" || state === "invalid") && <X className="h-4 w-4 text-rose-500" />}
+            </div>
+          </div>
+          <div className="text-xs min-h-[1.25rem]">
+            {state === "taken" && <span className="text-rose-600 font-medium">That username is taken.</span>}
+            {state === "invalid" && <span className="text-rose-600 font-medium">3+ chars, only letters, numbers, and _</span>}
+            {state === "available" && value.trim().toLowerCase() !== currentUsername && (
+              <span className="text-emerald-700 font-medium">Nice — @{value.trim().toLowerCase()} is available.</span>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" className="rounded-full bg-white/60" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button className="rounded-full" onClick={save} disabled={state !== "available" || saving || value.trim().toLowerCase() === currentUsername}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
