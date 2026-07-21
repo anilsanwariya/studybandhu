@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,16 +20,24 @@ const TAKEN = new Set(["admin", "test", "user", "aditya", "priya", "studybandhu"
 
 type UsernameState = "idle" | "checking" | "available" | "taken" | "invalid";
 
-export function OnboardingModal() {
-  const { needsOnboarding, completeOnboarding } = useAuth();
-  const [step, setStep] = useState(1);
+interface OnboardingModalProps {
+  /** Controlled open state for edit mode. If undefined, modal is driven by `needsOnboarding`. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** When true, prefill from current user and save via updateUser instead of completeOnboarding. */
+  editMode?: boolean;
+}
 
+export function OnboardingModal({ open, onOpenChange, editMode = false }: OnboardingModalProps = {}) {
+  const { user, needsOnboarding, completeOnboarding, updateUser } = useAuth();
+  const controlled = open !== undefined;
+  const isOpen = controlled ? !!open : needsOnboarding;
+
+  const [step, setStep] = useState(1);
   const [username, setUsername] = useState("");
   const [uState, setUState] = useState<UsernameState>("idle");
   const [checkTimer, setCheckTimer] = useState<number | null>(null);
-
   const [exam, setExam] = useState("");
-
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
 
@@ -38,10 +46,24 @@ export function OnboardingModal() {
     []
   );
 
+  // Prefill when opening in edit mode
+  useEffect(() => {
+    if (isOpen && editMode && user) {
+      setStep(1);
+      setUsername(user.username ?? "");
+      setUState(user.username ? "available" : "idle");
+      setExam(user.targetExam ?? "");
+      setSelectedSubjects(user.selectedSubjects ?? []);
+      setSelectedChapters(user.selectedChapters ?? []);
+    }
+  }, [isOpen, editMode, user]);
+
   const validateUsername = (val: string) => {
     const v = val.trim().toLowerCase();
     if (v.length < 3) return "invalid" as const;
     if (!/^[a-z0-9_]+$/.test(v)) return "invalid" as const;
+    // Allow keeping your own username in edit mode
+    if (editMode && user?.username && v === user.username) return "available" as const;
     return TAKEN.has(v) ? ("taken" as const) : ("available" as const);
   };
 
@@ -57,12 +79,10 @@ export function OnboardingModal() {
   const toggleSubject = (id: string) => {
     setSelectedSubjects((prev) => {
       if (prev.includes(id)) {
-        // remove subject + its chapters
         const chs = subjectChapters.find((s) => s.id === id)?.chapters.map((c) => c.id) ?? [];
         setSelectedChapters((c) => c.filter((x) => !chs.includes(x)));
         return prev.filter((x) => x !== id);
       }
-      // add subject + all its chapters by default
       const chs = subjectChapters.find((s) => s.id === id)?.chapters.map((c) => c.id) ?? [];
       setSelectedChapters((c) => Array.from(new Set([...c, ...chs])));
       return [...prev, id];
@@ -73,7 +93,6 @@ export function OnboardingModal() {
     setSelectedChapters((prev) => {
       const has = prev.includes(chapterId);
       const next = has ? prev.filter((x) => x !== chapterId) : [...prev, chapterId];
-      // ensure subject is selected if any chapter is
       if (!has && !selectedSubjects.includes(subjectId)) {
         setSelectedSubjects((s) => [...s, subjectId]);
       }
@@ -82,15 +101,20 @@ export function OnboardingModal() {
   };
 
   const finish = () => {
-    completeOnboarding({
+    const payload = {
       username: username.trim().toLowerCase(),
       targetExam: exam,
       selectedSubjects,
       selectedChapters,
-    });
-    // reset local
-    setStep(1); setUsername(""); setUState("idle"); setExam("");
-    setSelectedSubjects([]); setSelectedChapters([]);
+    };
+    if (editMode) {
+      updateUser(payload);
+      onOpenChange?.(false);
+    } else {
+      completeOnboarding(payload);
+      setStep(1); setUsername(""); setUState("idle"); setExam("");
+      setSelectedSubjects([]); setSelectedChapters([]);
+    }
   };
 
   const canContinue1 = uState === "available";
@@ -98,7 +122,7 @@ export function OnboardingModal() {
   const canFinish = selectedSubjects.length > 0 && selectedChapters.length > 0;
 
   return (
-    <Dialog open={needsOnboarding}>
+    <Dialog open={isOpen} onOpenChange={controlled ? onOpenChange : undefined}>
       <DialogContent className="glass-strong border-white/60 rounded-3xl max-w-lg p-0 overflow-hidden [&>button]:hidden">
         <div className="p-6">
           <DialogHeader className="mb-4">
@@ -106,10 +130,12 @@ export function OnboardingModal() {
               <div className="h-8 w-8 rounded-xl bg-primary flex items-center justify-center">
                 <Sparkles className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-xs font-semibold text-muted-foreground">Step {step} of 3</span>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {editMode ? "Edit preferences · " : ""}Step {step} of 3
+              </span>
             </div>
             <DialogTitle className="text-2xl">
-              {step === 1 && "Pick a username"}
+              {step === 1 && (editMode ? "Update username" : "Pick a username")}
               {step === 2 && "What are you preparing for?"}
               {step === 3 && "Curate your syllabus"}
             </DialogTitle>
@@ -216,6 +242,11 @@ export function OnboardingModal() {
           )}
 
           <div className="flex gap-2 mt-6">
+            {editMode && (
+              <Button variant="outline" className="rounded-full bg-white/60" onClick={() => onOpenChange?.(false)}>
+                Cancel
+              </Button>
+            )}
             {step > 1 && (
               <Button variant="outline" className="rounded-full bg-white/60" onClick={() => setStep((s) => s - 1)}>
                 Back
@@ -231,7 +262,7 @@ export function OnboardingModal() {
               </Button>
             ) : (
               <Button className="flex-1 rounded-full" onClick={finish} disabled={!canFinish}>
-                Finish Setup
+                {editMode ? "Save changes" : "Finish Setup"}
               </Button>
             )}
           </div>
