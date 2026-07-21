@@ -115,6 +115,12 @@ function ProfilePage() {
         </section>
       </div>
       <OnboardingModal open={editOpen} onOpenChange={setEditOpen} editMode />
+      <ChangeUsernameDialog
+        open={usernameOpen}
+        onOpenChange={setUsernameOpen}
+        currentUsername={user.username ?? ""}
+        onSave={async (u) => { await updateUser({ username: u }); }}
+      />
     </AppShell>
   );
 }
