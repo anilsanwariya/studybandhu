@@ -1,6 +1,11 @@
+import type { User, Session } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type ProfileInsert = Database["public"]["Tables"]["profiles"]["Insert"];
+type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 export interface AuthUser {
   id: string;
@@ -14,6 +19,8 @@ export interface AuthUser {
   targetYear?: string;
   selectedSubjects?: string[];
   selectedChapters?: string[];
+  selectedSubjectIds?: string[];
+  selectedChapterIds?: string[];
   joinedAt: string;
   onboarded: boolean;
   isAdmin: boolean;
@@ -27,38 +34,68 @@ interface AuthCtx {
   isAdmin: boolean;
   needsOnboarding: boolean;
   signInWithPassword: (email: string, password: string) => Promise<{ error?: string }>;
-  signUpWithPassword: (email: string, password: string, name?: string) => Promise<{ error?: string }>;
+  signUpWithPassword: (
+    email: string,
+    password: string,
+    name?: string,
+  ) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
-  completeOnboarding: (data: { username: string; targetExam: string; targetExamId?: string; selectedSubjects: string[]; selectedChapters: string[] }) => Promise<void>;
+  completeOnboarding: (data: {
+    username: string;
+    targetExam: string;
+    targetExamId?: string;
+    selectedSubjects: string[];
+    selectedChapters: string[];
+  }) => Promise<void>;
   updateUser: (patch: Partial<AuthUser>) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+function metadataString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 async function loadProfile(u: User): Promise<AuthUser> {
   const [profileRes, roleRes] = await Promise.all([
-    supabase.from("profiles").select("*, exams:target_exam_id(id, name)").eq("user_id", u.id).maybeSingle(),
+    supabase.from("profiles").select("*").eq("user_id", u.id).maybeSingle(),
     supabase.from("user_roles").select("role").eq("user_id", u.id),
   ]);
-  const p: any = profileRes.data ?? {};
-  const isAdmin = (roleRes.data ?? []).some((r: any) => r.role === "admin");
-  const meta: any = u.user_metadata ?? {};
+  if (profileRes.error) throw profileRes.error;
+  if (roleRes.error) throw roleRes.error;
+  const p = profileRes.data as ProfileRow | null;
+  let targetExam: string | undefined;
+  if (p?.target_exam_id) {
+    const { data: exam } = await supabase
+      .from("exams")
+      .select("name")
+      .eq("id", p.target_exam_id)
+      .maybeSingle();
+    targetExam = exam?.name;
+  }
+  const isAdmin = (roleRes.data ?? []).some((r) => r.role === "admin");
+  const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+  const metaName = metadataString(meta.name);
+  const metaFullName = metadataString(meta.full_name);
+  const metaAvatar = metadataString(meta.avatar_url);
   return {
     id: u.id,
     email: u.email ?? "",
-    name: p.name ?? meta.name ?? meta.full_name ?? (u.email?.split("@")[0] ?? "Aspirant"),
-    avatarUrl: p.avatar_url ?? meta.avatar_url,
-    username: p.username ?? undefined,
-    targetExamId: p.target_exam_id ?? undefined,
-    targetExam: p.exams?.name ?? undefined,
-    academicBackground: p.academic_background ?? undefined,
-    targetYear: p.target_year ?? undefined,
-    selectedSubjects: [],
-    selectedChapters: [],
-    joinedAt: p.created_at ?? u.created_at ?? new Date().toISOString(),
-    onboarded: !!p.onboarded,
+    name: p?.name ?? metaName ?? metaFullName ?? u.email?.split("@")[0] ?? "Aspirant",
+    avatarUrl: p?.avatar_url ?? metaAvatar,
+    username: p?.username ?? undefined,
+    targetExamId: p?.target_exam_id ?? undefined,
+    targetExam,
+    academicBackground: p?.academic_background ?? undefined,
+    targetYear: p?.target_year ?? undefined,
+    selectedSubjects: p?.selected_subject_ids ?? [],
+    selectedChapters: p?.selected_chapter_ids ?? [],
+    selectedSubjectIds: p?.selected_subject_ids ?? [],
+    selectedChapterIds: p?.selected_chapter_ids ?? [],
+    joinedAt: p?.created_at ?? u.created_at ?? new Date().toISOString(),
+    onboarded: !!p?.onboarded,
     isAdmin,
   };
 }
@@ -80,7 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
       if (data.session?.user) {
-        try { setUser(await loadProfile(data.session.user)); } catch (e) { console.error(e); }
+        try {
+          setUser(await loadProfile(data.session.user));
+        } catch (e) {
+          console.error(e);
+        }
       }
       setLoading(false);
     });
@@ -107,7 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin, data: name ? { name } : undefined },
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: name ? { name } : undefined,
+        },
       });
       return { error: error?.message };
     },
@@ -117,7 +161,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         redirect_uri: window.location.origin,
         extraParams: { prompt: "select_account" },
       });
-      if (result.error) return { error: result.error instanceof Error ? result.error.message : String(result.error) };
+      if (result.error) {
+        return {
+          error: result.error instanceof Error ? result.error.message : String(result.error),
+        };
+      }
       return {};
     },
     signOut: async () => {
@@ -126,25 +174,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     completeOnboarding: async (data) => {
       if (!user) return;
-      await supabase.from("profiles").update({
+      const onboardingPatch: ProfileInsert = {
+        user_id: user.id,
         username: data.username,
         target_exam_id: data.targetExamId ?? null,
+        selected_subject_ids: data.selectedSubjects,
+        selected_chapter_ids: data.selectedChapters,
         onboarded: true,
         updated_at: new Date().toISOString(),
-      }).eq("user_id", user.id);
+      };
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(onboardingPatch, { onConflict: "user_id" });
+      if (error) throw error;
       await refresh();
     },
     updateUser: async (patch) => {
       if (!user) return;
-      const dbPatch: any = {};
+      const dbPatch: ProfileInsert = { user_id: user.id };
       if (patch.username !== undefined) dbPatch.username = patch.username;
       if (patch.targetExamId !== undefined) dbPatch.target_exam_id = patch.targetExamId;
+      if (patch.selectedSubjects !== undefined) {
+        dbPatch.selected_subject_ids = patch.selectedSubjects;
+      }
+      if (patch.selectedChapters !== undefined) {
+        dbPatch.selected_chapter_ids = patch.selectedChapters;
+      }
+      if (patch.selectedSubjectIds !== undefined) {
+        dbPatch.selected_subject_ids = patch.selectedSubjectIds;
+      }
+      if (patch.selectedChapterIds !== undefined) {
+        dbPatch.selected_chapter_ids = patch.selectedChapterIds;
+      }
       if (patch.name !== undefined) dbPatch.name = patch.name;
-      if (patch.academicBackground !== undefined) dbPatch.academic_background = patch.academicBackground;
+      if (patch.academicBackground !== undefined) {
+        dbPatch.academic_background = patch.academicBackground;
+      }
       if (patch.targetYear !== undefined) dbPatch.target_year = patch.targetYear;
-      if (Object.keys(dbPatch).length) {
+      if (Object.keys(dbPatch).length > 1) {
         dbPatch.updated_at = new Date().toISOString();
-        await supabase.from("profiles").update(dbPatch).eq("user_id", user.id);
+        const { error } = await supabase
+          .from("profiles")
+          .upsert(dbPatch, { onConflict: "user_id" });
+        if (error) throw error;
       }
       await refresh();
     },

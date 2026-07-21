@@ -54,6 +54,8 @@ export type Database = {
           created_at: string
           name: string | null
           onboarded: boolean
+          selected_chapter_ids: string[]
+          selected_subject_ids: string[]
           target_exam_id: string | null
           target_year: string | null
           updated_at: string
@@ -66,6 +68,8 @@ export type Database = {
           created_at?: string
           name?: string | null
           onboarded?: boolean
+          selected_chapter_ids?: string[]
+          selected_subject_ids?: string[]
           target_exam_id?: string | null
           target_year?: string | null
           updated_at?: string
@@ -78,6 +82,8 @@ export type Database = {
           created_at?: string
           name?: string | null
           onboarded?: boolean
+          selected_chapter_ids?: string[]
+          selected_subject_ids?: string[]
           target_exam_id?: string | null
           target_year?: string | null
           updated_at?: string

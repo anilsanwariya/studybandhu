@@ -1,11 +1,29 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { mockSyllabus, type SyllabusNode, type Status } from "./mock-syllabus";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { SyllabusNode, Status } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
 
+interface SyllabusDbRow {
+  id: string;
+  parent_id: string | null;
+  title: string;
+  node_type: string;
+  sort_order: number;
+}
+
 interface StoreState {
   tree: SyllabusNode[];
+  syllabusLoading: boolean;
   bucket: string[];
   dailyLimit: number;
   streak: number;
@@ -41,7 +59,11 @@ interface StoreCtx extends StoreState {
 
 const StoreContext = createContext<StoreCtx | null>(null);
 
-function walk(nodes: SyllabusNode[], fn: (n: SyllabusNode, parents: SyllabusNode[]) => void, parents: SyllabusNode[] = []) {
+function walk(
+  nodes: SyllabusNode[],
+  fn: (n: SyllabusNode, parents: SyllabusNode[]) => void,
+  parents: SyllabusNode[] = [],
+) {
   for (const n of nodes) {
     fn(n, parents);
     if (n.children) walk(n.children, fn, [...parents, n]);
@@ -56,7 +78,13 @@ function mapTree(nodes: SyllabusNode[], fn: (n: SyllabusNode) => SyllabusNode): 
 }
 
 function resetSubtree(node: SyllabusNode): SyllabusNode {
-  const next: SyllabusNode = { ...node, status: "unread", dueToday: false, revisionCount: 0, nextRevisionAt: null };
+  const next: SyllabusNode = {
+    ...node,
+    status: "unread",
+    dueToday: false,
+    revisionCount: 0,
+    nextRevisionAt: null,
+  };
   if (node.children) next.children = node.children.map(resetSubtree);
   return next;
 }
@@ -69,42 +97,84 @@ function daysFromToday(days: number): string {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [tree, setTree] = useState<SyllabusNode[]>(mockSyllabus);
+  const [tree, setTree] = useState<SyllabusNode[]>([]);
+  const [syllabusLoading, setSyllabusLoading] = useState(false);
 
   // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
     const examId = user?.targetExamId;
-    if (!examId) return;
+    setBucket([]);
+    if (!user || !examId) {
+      setTree([]);
+      setSyllabusLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSyllabusLoading(true);
     (async () => {
       const { data, error } = await supabase
         .from("syllabus_nodes")
         .select("id, parent_id, title, node_type, sort_order")
         .eq("exam_id", examId)
-        .order("sort_order");
-      if (error || !data || data.length === 0) return;
-      const byParent = new Map<string | null, any[]>();
-      for (const row of data) {
+        .order("sort_order", { ascending: true })
+        .order("title", { ascending: true });
+      if (cancelled) return;
+      setSyllabusLoading(false);
+      if (error || !data || data.length === 0) {
+        setTree([]);
+        return;
+      }
+      const selectedSubjects = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
+      const selectedChapters = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
+      const hasSubjectSelection = selectedSubjects.size > 0;
+      const hasChapterSelection = selectedChapters.size > 0;
+      const byParent = new Map<string | null, SyllabusDbRow[]>();
+      for (const row of data as SyllabusDbRow[]) {
         const arr = byParent.get(row.parent_id) ?? [];
         arr.push(row);
         byParent.set(row.parent_id, arr);
       }
       const build = (parentId: string | null): SyllabusNode[] => {
         const rows = byParent.get(parentId) ?? [];
-        return rows.map((r) => ({
-          id: r.id,
-          title: r.title,
-          type: r.node_type as SyllabusNode["type"],
-          status: "unread" as Status,
-          children: build(r.id),
-        }));
+        return rows.flatMap((r) => {
+          if (r.node_type === "subject" && hasSubjectSelection && !selectedSubjects.has(r.id)) {
+            return [];
+          }
+          if (r.node_type === "chapter" && hasChapterSelection && !selectedChapters.has(r.id)) {
+            return [];
+          }
+          return [
+            {
+              id: r.id,
+              title: r.title,
+              type: r.node_type as SyllabusNode["type"],
+              status: "unread" as Status,
+              dueToday: false,
+              revisionCount: 0,
+              nextRevisionAt: null,
+              children: build(r.id),
+            },
+          ];
+        });
       };
       setTree(build(null));
     })();
-  }, [user?.targetExamId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    user,
+    user?.id,
+    user?.targetExamId,
+    user?.selectedSubjectIds,
+    user?.selectedChapterIds,
+    user?.selectedSubjects,
+    user?.selectedChapters,
+  ]);
 
   const [bucket, setBucket] = useState<string[]>([]);
-  const [streak] = useState(7);
-  const [xp, setXp] = useState(1240);
+  const [streak] = useState(0);
+  const [xp, setXp] = useState(0);
   const [lastAward, setLastAward] = useState<XpAward | null>(null);
   const awardCounter = useRef(0);
   const dailyLimit = 7;
@@ -119,13 +189,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const newTargets = flatTopics.filter((n) => n.status === "unread");
   const dueToday = flatTopics.filter((n) => n.dueToday && n.status !== "unread");
-  const bucketNodes = bucket.map((id) => flatTopics.find((n) => n.id === id)).filter(Boolean) as SyllabusNode[];
+  const bucketNodes = bucket
+    .map((id) => flatTopics.find((n) => n.id === id))
+    .filter(Boolean) as SyllabusNode[];
 
-  const findNode = useCallback((id: string) => {
-    let found: SyllabusNode | undefined;
-    walk(tree, (n) => { if (n.id === id) found = n; });
-    return found;
-  }, [tree]);
+  const findNode = useCallback(
+    (id: string) => {
+      let found: SyllabusNode | undefined;
+      walk(tree, (n) => {
+        if (n.id === id) found = n;
+      });
+      return found;
+    },
+    [tree],
+  );
 
   const addToBucket = useCallback((id: string) => {
     setBucket((b) => (b.includes(id) || b.length >= dailyLimit ? b : [...b, id]));
@@ -165,51 +242,90 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const clearAward = useCallback(() => setLastAward(null), []);
 
-  const rateTopic = useCallback((id: string, rating: "hard" | "medium" | "easy" | "push") => {
-    let newStatus: Status = "first-read";
-    let nextDue = false;
-    let nextRevisionAt: string | null = null;
-    if (rating === "hard") { newStatus = "needs-revision"; nextDue = true; nextRevisionAt = daysFromToday(1); }
-    else if (rating === "medium") { newStatus = "first-read"; nextRevisionAt = daysFromToday(3); }
-    else if (rating === "easy") { newStatus = "mastered"; nextRevisionAt = daysFromToday(7); }
-    else if (rating === "push") { nextDue = true; }
+  const rateTopic = useCallback(
+    (id: string, rating: "hard" | "medium" | "easy" | "push") => {
+      let newStatus: Status = "first-read";
+      let nextDue = false;
+      let nextRevisionAt: string | null = null;
+      if (rating === "hard") {
+        newStatus = "needs-revision";
+        nextDue = true;
+        nextRevisionAt = daysFromToday(1);
+      } else if (rating === "medium") {
+        newStatus = "first-read";
+        nextRevisionAt = daysFromToday(3);
+      } else if (rating === "easy") {
+        newStatus = "mastered";
+        nextRevisionAt = daysFromToday(7);
+      } else if (rating === "push") {
+        nextDue = true;
+      }
 
-    setTree((t) => mapTree(t, (n) => {
-      if (n.id !== id) return n;
-      if (rating === "push") return { ...n, dueToday: true };
-      return {
-        ...n,
-        status: newStatus,
-        dueToday: nextDue,
-        nextRevisionAt,
-        revisionCount: (n.revisionCount ?? 0) + 1,
-      };
-    }));
+      setTree((t) =>
+        mapTree(t, (n) => {
+          if (n.id !== id) return n;
+          if (rating === "push") return { ...n, dueToday: true };
+          return {
+            ...n,
+            status: newStatus,
+            dueToday: nextDue,
+            nextRevisionAt,
+            revisionCount: (n.revisionCount ?? 0) + 1,
+          };
+        }),
+      );
 
-    if (rating !== "push") {
+      if (rating !== "push") {
+        setBucket((b) => b.filter((x) => x !== id));
+        const gain = rating === "easy" ? 20 : rating === "medium" ? 15 : 10;
+        awardXp(gain, `${rating[0].toUpperCase()}${rating.slice(1)} recall`);
+      }
+    },
+    [awardXp],
+  );
+
+  const scheduleRevision = useCallback(
+    (id: string, days: number) => {
+      setTree((t) =>
+        mapTree(t, (n) =>
+          n.id === id
+            ? {
+                ...n,
+                status: "needs-revision",
+                dueToday: days === 0,
+                nextRevisionAt: daysFromToday(days),
+                revisionCount: (n.revisionCount ?? 0) + 1,
+              }
+            : n,
+        ),
+      );
       setBucket((b) => b.filter((x) => x !== id));
-      const gain = rating === "easy" ? 20 : rating === "medium" ? 15 : 10;
-      awardXp(gain, `${rating[0].toUpperCase()}${rating.slice(1)} recall`);
-    }
-  }, [awardXp]);
-
-  const scheduleRevision = useCallback((id: string, days: number) => {
-    setTree((t) => mapTree(t, (n) => n.id === id ? {
-      ...n,
-      status: "needs-revision",
-      dueToday: days === 0,
-      nextRevisionAt: daysFromToday(days),
-      revisionCount: (n.revisionCount ?? 0) + 1,
-    } : n));
-    setBucket((b) => b.filter((x) => x !== id));
-    awardXp(12, `Scheduled in ${days}d`);
-  }, [awardXp]);
+      awardXp(12, `Scheduled in ${days}d`);
+    },
+    [awardXp],
+  );
 
   const value: StoreCtx = {
-    tree, bucket, dailyLimit, streak, xp,
-    flatTopics, newTargets, dueToday, bucketNodes,
-    lastAward, clearAward,
-    addToBucket, removeFromBucket, updateNode, resetNode, rateTopic, scheduleRevision, awardXp, findNode,
+    tree,
+    syllabusLoading,
+    bucket,
+    dailyLimit,
+    streak,
+    xp,
+    flatTopics,
+    newTargets,
+    dueToday,
+    bucketNodes,
+    lastAward,
+    clearAward,
+    addToBucket,
+    removeFromBucket,
+    updateNode,
+    resetNode,
+    rateTopic,
+    scheduleRevision,
+    awardXp,
+    findNode,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
