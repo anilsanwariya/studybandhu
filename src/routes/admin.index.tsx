@@ -118,23 +118,20 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
-  const [schemaText, setSchemaText] = useState(DEFAULT_SCHEMA.join(", "));
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!name || !slug) return;
-    const level_schema = schemaText.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-    if (level_schema.length === 0) { toast.error("Provide at least one level"); return; }
     setBusy(true);
     const { data, error } = await supabase
       .from("exams")
-      .insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description, level_schema } as any)
+      .insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description } as any)
       .select("id").single();
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Exam created");
     onCreated(data.id);
-    setName(""); setSlug(""); setDescription(""); setSchemaText(DEFAULT_SCHEMA.join(", "));
+    setName(""); setSlug(""); setDescription("");
     onOpenChange(false);
   };
 
@@ -145,10 +142,8 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
         <div className="space-y-3">
           <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => { setName(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-")); }} placeholder="UPSC CSE" className="bg-white/60 border-white/70 rounded-xl" /></div>
           <div className="space-y-1.5"><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="upsc-cse" className="bg-white/60 border-white/70 rounded-xl" /></div>
-          <div className="space-y-1.5">
-            <Label>Hierarchy levels (top → bottom, comma-separated)</Label>
-            <Input value={schemaText} onChange={(e) => setSchemaText(e.target.value)} placeholder="paper, unit, subject, chapter, topic, subtopic" className="bg-white/60 border-white/70 rounded-xl font-mono text-xs" />
-            <p className="text-[11px] text-muted-foreground">e.g. RAS: paper, unit, subject, chapter, topic, subtopic. Patwar: paper, unit, subject, chapter, topic, subtopic. Simple: subject, chapter, topic, subtopic.</p>
+          <div className="glass rounded-xl px-3 py-2 text-[11px] text-muted-foreground">
+            Every exam uses the fixed hierarchy: <span className="font-semibold text-foreground">Subject &rsaquo; Chapter &rsaquo; Topic &rsaquo; Subtopic</span>.
           </div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-white/60 border-white/70 rounded-xl" /></div>
           <Button onClick={submit} disabled={busy || !name || !slug} className="w-full rounded-full">{busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Create</Button>
@@ -157,6 +152,7 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
     </Dialog>
   );
 }
+
 
 function SchemaEditor({ schema, onChange }: { schema: string[]; onChange: (next: string[]) => void }) {
   const [draft, setDraft] = useState("");
