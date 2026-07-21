@@ -112,6 +112,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       setUsername(user.username ?? "");
       setUState(user.username ? "available" : "idle");
       setExamId(user.targetExamId ?? "");
+      setAcademicBackground(user.academicBackground ?? "");
+      setTargetYear(user.targetYear ?? "");
       setSelectedSubjects(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
       setSelectedChapters(user.selectedChapterIds ?? user.selectedChapters ?? []);
     } else if (isOpen && !editMode) {
@@ -119,6 +121,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       setUsername("");
       setUState("idle");
       setExamId("");
+      setAcademicBackground("");
+      setTargetYear("");
       setSyllabus([]);
       setSelectedSubjects([]);
       setSelectedChapters([]);
