@@ -1,11 +1,12 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { mockSyllabus, type SyllabusNode, type Status } from "./mock-syllabus";
+import type { SyllabusNode, Status } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
 
 interface StoreState {
   tree: SyllabusNode[];
+  syllabusLoading: boolean;
   bucket: string[];
   dailyLimit: number;
   streak: number;
@@ -69,19 +70,37 @@ function daysFromToday(days: number): string {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [tree, setTree] = useState<SyllabusNode[]>(mockSyllabus);
+  const [tree, setTree] = useState<SyllabusNode[]>([]);
+  const [syllabusLoading, setSyllabusLoading] = useState(false);
 
   // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
     const examId = user?.targetExamId;
-    if (!examId) return;
+    setBucket([]);
+    if (!user || !examId) {
+      setTree([]);
+      setSyllabusLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSyllabusLoading(true);
     (async () => {
       const { data, error } = await supabase
         .from("syllabus_nodes")
         .select("id, parent_id, title, node_type, sort_order")
         .eq("exam_id", examId)
-        .order("sort_order");
-      if (error || !data || data.length === 0) return;
+        .order("sort_order", { ascending: true })
+        .order("title", { ascending: true });
+      if (cancelled) return;
+      setSyllabusLoading(false);
+      if (error || !data || data.length === 0) {
+        setTree([]);
+        return;
+      }
+      const selectedSubjects = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
+      const selectedChapters = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
+      const hasSubjectSelection = selectedSubjects.size > 0;
+      const hasChapterSelection = selectedChapters.size > 0;
       const byParent = new Map<string | null, any[]>();
       for (const row of data) {
         const arr = byParent.get(row.parent_id) ?? [];
@@ -90,17 +109,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const build = (parentId: string | null): SyllabusNode[] => {
         const rows = byParent.get(parentId) ?? [];
-        return rows.map((r) => ({
-          id: r.id,
-          title: r.title,
-          type: r.node_type as SyllabusNode["type"],
-          status: "unread" as Status,
-          children: build(r.id),
-        }));
+        return rows.flatMap((r) => {
+          if (r.node_type === "subject" && hasSubjectSelection && !selectedSubjects.has(r.id)) return [];
+          if (r.node_type === "chapter" && hasChapterSelection && !selectedChapters.has(r.id)) return [];
+          return [{
+            id: r.id,
+            title: r.title,
+            type: r.node_type as SyllabusNode["type"],
+            status: "unread" as Status,
+            dueToday: false,
+            revisionCount: 0,
+            nextRevisionAt: null,
+            children: build(r.id),
+          }];
+        });
       };
       setTree(build(null));
     })();
-  }, [user?.targetExamId]);
+    return () => { cancelled = true; };
+  }, [user?.id, user?.targetExamId, user?.selectedSubjectIds, user?.selectedChapterIds, user?.selectedSubjects, user?.selectedChapters]);
 
   const [bucket, setBucket] = useState<string[]>([]);
   const [streak] = useState(7);
@@ -206,7 +233,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [awardXp]);
 
   const value: StoreCtx = {
-    tree, bucket, dailyLimit, streak, xp,
+    tree, syllabusLoading, bucket, dailyLimit, streak, xp,
     flatTopics, newTargets, dueToday, bucketNodes,
     lastAward, clearAward,
     addToBucket, removeFromBucket, updateNode, resetNode, rateTopic, scheduleRevision, awardXp, findNode,
