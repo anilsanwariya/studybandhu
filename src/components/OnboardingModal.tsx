@@ -129,7 +129,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
 
   useEffect(() => {
     if (isOpen && editMode && user) {
-      setStep(1);
+      setStep(2);
       setUsername(user.username ?? "");
       setUState(user.username ? "available" : "idle");
       setExamId(user.targetExamId ?? "");
