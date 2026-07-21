@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil } from "lucide-react";
+import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil, SlidersHorizontal } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -22,6 +24,7 @@ function initials(name: string) {
 function ProfilePage() {
   const { user, signOut } = useAuth();
   const { streak, xp, flatTopics } = useStore();
+  const [editOpen, setEditOpen] = useState(false);
 
   if (!user) {
     return (
@@ -45,14 +48,19 @@ function ProfilePage() {
         </div>
         <div className="flex-1 text-center md:text-left">
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">{user.name}</h1>
+          {user.username && <div className="text-sm text-muted-foreground">@{user.username}</div>}
           <div className="flex items-center justify-center md:justify-start gap-1.5 text-sm text-muted-foreground mt-1">
             <Mail className="h-3.5 w-3.5" /> {user.email}
           </div>
           <div className="flex flex-wrap gap-2 mt-3 justify-center md:justify-start">
             {user.targetExam && <span className="glass rounded-full px-3 py-1 text-xs font-semibold">🎯 {user.targetExam} {user.targetYear && `· ${user.targetYear}`}</span>}
             {user.academicBackground && <span className="glass rounded-full px-3 py-1 text-xs font-semibold">🎓 {user.academicBackground}</span>}
+            {user.selectedSubjects?.length ? <span className="glass rounded-full px-3 py-1 text-xs font-semibold">📚 {user.selectedSubjects.length} subjects · {user.selectedChapters?.length ?? 0} chapters</span> : null}
           </div>
         </div>
+        <Button onClick={() => setEditOpen(true)} className="rounded-full gap-2 shrink-0">
+          <SlidersHorizontal className="h-4 w-4" /> Edit preferences
+        </Button>
       </header>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -79,9 +87,9 @@ function ProfilePage() {
         <section className="glass-strong rounded-3xl p-6 lg:col-span-3">
           <h2 className="font-semibold text-lg mb-4">Account Settings</h2>
           <div className="grid sm:grid-cols-3 gap-3">
-            <Button variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Target Exam</div>
-              <span className="text-xs text-muted-foreground font-normal">Switch or update your goal</span>
+            <Button onClick={() => setEditOpen(true)} variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
+              <div className="flex items-center gap-2 text-sm font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Username, Exam & Syllabus</div>
+              <span className="text-xs text-muted-foreground font-normal">Re-run the onboarding wizard</span>
             </Button>
             <Button variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
               <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound className="h-3.5 w-3.5" /> Change Password</div>
@@ -98,6 +106,7 @@ function ProfilePage() {
           </div>
         </section>
       </div>
+      <OnboardingModal open={editOpen} onOpenChange={setEditOpen} editMode />
     </AppShell>
   );
 }
