@@ -193,13 +193,11 @@ function SchemaEditor({ schema, onChange }: { schema: string[]; onChange: (next:
 
 function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
-  const [schema, setSchema] = useState<string[]>(exam.level_schema);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const parseFn = useServerFn(parseSyllabusPdf);
-
-  useEffect(() => { setSchema(exam.level_schema); }, [exam.id, exam.level_schema]);
+  const schema = SCHEMA as unknown as string[];
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -225,12 +223,6 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     else { toast.success(!exam.is_published ? "Published" : "Unpublished"); onChange(); }
   };
 
-  const saveSchema = async () => {
-    if (schema.length === 0) { toast.error("Schema cannot be empty"); return; }
-    const { error } = await supabase.from("exams").update({ level_schema: schema } as any).eq("id", exam.id);
-    if (error) toast.error(error.message); else { toast.success("Schema updated"); onChange(); }
-  };
-
   const deleteExam = async () => {
     if (!confirm(`Delete "${exam.name}" and all its syllabus?`)) return;
     const { error } = await supabase.from("exams").delete().eq("id", exam.id);
@@ -246,7 +238,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
       const base64 = btoa(binary);
-      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}`, levelSchema: schema } });
+      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}` } });
       const flat = flattenAi(result.nodes ?? [], schema, 0);
       setTree(flat);
       toast.success(`Parsed ${countAll(flat)} items. Review and save.`);
@@ -313,6 +305,9 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         <div>
           <h2 className="text-xl font-bold">{exam.name}</h2>
           <p className="text-xs text-muted-foreground">{exam.description || exam.slug}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+            {schema.join(" › ")}
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <label className="inline-flex">
@@ -333,13 +328,6 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         </div>
       </div>
 
-      <div className="mb-5 space-y-2">
-        <SchemaEditor schema={schema} onChange={setSchema} />
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" className="rounded-full bg-white/60" onClick={saveSchema}>Save schema</Button>
-        </div>
-      </div>
-
       {loading ? (
         <div className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
       ) : (
@@ -350,14 +338,15 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             </div>
           </div>
           <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, 0)}>
-            <Plus className="h-3.5 w-3.5" /> Add {schema[0] ?? "item"}
+            <Plus className="h-3.5 w-3.5" /> Add {schema[0]}
           </Button>
-          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill the tree using this exam's schema. Review, edit, then Save.</p>
+          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill Subject &rsaquo; Chapter &rsaquo; Topic &rsaquo; Subtopic. Review, edit, then Save.</p>
         </>
       )}
     </div>
   );
 }
+
 
 function NodeRow({ node, path, schema, onUpdate, onAdd }: {
   node: TreeNode;
