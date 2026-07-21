@@ -79,7 +79,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   const [checkTimer, setCheckTimer] = useState<number | null>(null);
   const [examId, setExamId] = useState<string>("");
   const [exams, setExams] = useState<Exam[]>([]);
-  const [syllabus, setSyllabus] = useState<SubjectOption[]>([]);
+  const [syllabus, setSyllabus] = useState<L1Option[]>([]);
   const [loadingExams, setLoadingExams] = useState(false);
   const [loadingSyllabus, setLoadingSyllabus] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
@@ -100,16 +100,29 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     "Other",
   ];
 
+  const currentExam = exams.find((e) => e.id === examId);
+  const schema = currentExam?.level_schema ?? ["subject", "chapter", "topic", "subtopic"];
+  const l1Label = schema[0] ?? "subject";
+  const l2Label = schema[1] ?? "chapter";
+  const hasL2 = schema.length > 1;
+
   useEffect(() => {
     if (!isOpen) return;
     setLoadingExams(true);
     supabase
       .from("exams")
-      .select("id, name, description, slug")
+      .select("id, name, description, slug, level_schema")
       .eq("is_published", true)
       .order("name")
       .then(({ data }) => {
-        setExams((data as Exam[]) ?? []);
+        setExams(
+          ((data as any[]) ?? []).map((e) => ({
+            ...e,
+            level_schema: Array.isArray(e.level_schema)
+              ? e.level_schema
+              : ["subject", "chapter", "topic", "subtopic"],
+          })) as Exam[],
+        );
         setLoadingExams(false);
       });
   }, [isOpen]);
@@ -146,7 +159,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     setLoadingSyllabus(true);
     supabase
       .from("syllabus_nodes")
-      .select("id, parent_id, title, node_type, sort_order")
+      .select("id, parent_id, title, node_type, sort_order, depth")
       .eq("exam_id", examId)
       .order("sort_order", { ascending: true })
       .order("title", { ascending: true })
@@ -163,37 +176,35 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
           list.push(row);
           children.set(row.parent_id, list);
         });
-        const countTopics = (id: string): number =>
+        // Count descendants beneath depth 1 (i.e. actual study items under each L2 group).
+        const countLeaves = (id: string): number =>
           (children.get(id) ?? []).reduce((sum, row) => {
-            if (row.node_type === "topic" || row.node_type === "subtopic") {
-              return sum + 1 + countTopics(row.id);
-            }
-            return sum + countTopics(row.id);
+            const kids = children.get(row.id) ?? [];
+            if (kids.length === 0) return sum + 1;
+            return sum + countLeaves(row.id);
           }, 0);
-        const next = (children.get(null) ?? [])
-          .filter((row) => row.node_type === "subject")
-          .map((subject) => ({
-            id: subject.id,
-            title: subject.title,
-            chapters: (children.get(subject.id) ?? [])
-              .filter((row) => row.node_type === "chapter")
-              .map((chapter) => ({
-                id: chapter.id,
-                title: chapter.title,
-                topicCount: countTopics(chapter.id),
+        const next: L1Option[] = (children.get(null) ?? [])
+          .filter((row) => row.depth === 0)
+          .map((l1) => ({
+            id: l1.id,
+            title: l1.title,
+            children: (children.get(l1.id) ?? [])
+              .filter((row) => row.depth === 1)
+              .map((l2) => ({
+                id: l2.id,
+                title: l2.title,
+                descendantCount: countLeaves(l2.id),
               })),
           }));
         setSyllabus(next);
-        setExpandedSubjects(next.slice(0, 3).map((subject) => subject.id));
-        const allSubjects = next.map((subject) => subject.id);
-        const allChapters = next.flatMap((subject) =>
-          subject.chapters.map((chapter) => chapter.id),
-        );
+        setExpandedSubjects(next.slice(0, 3).map((l1) => l1.id));
+        const allL1 = next.map((l1) => l1.id);
+        const allL2 = next.flatMap((l1) => l1.children.map((c) => c.id));
         const sameExam = editMode && examId === user?.targetExamId;
         const savedSubjects = user?.selectedSubjectIds ?? user?.selectedSubjects ?? [];
         const savedChapters = user?.selectedChapterIds ?? user?.selectedChapters ?? [];
-        setSelectedSubjects(sameExam && savedSubjects.length ? savedSubjects : allSubjects);
-        setSelectedChapters(sameExam && savedChapters.length ? savedChapters : allChapters);
+        setSelectedSubjects(sameExam && savedSubjects.length ? savedSubjects : allL1);
+        setSelectedChapters(sameExam && savedChapters.length ? savedChapters : allL2);
       });
     return () => {
       cancelled = true;
@@ -208,6 +219,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     user?.selectedSubjects,
     user?.selectedChapters,
   ]);
+
 
   const validateUsername = async (val: string): Promise<UsernameState> => {
     const v = val.trim().toLowerCase();
