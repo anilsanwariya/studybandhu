@@ -422,6 +422,42 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   </button>
                 );
               })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground pl-1">
+                    Academic background
+                  </label>
+                  <Select value={academicBackground} onValueChange={setAcademicBackground}>
+                    <SelectTrigger className="glass rounded-2xl h-11 bg-white/60">
+                      <SelectValue placeholder="Select background" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {backgroundOptions.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground pl-1">
+                    Target exam year
+                  </label>
+                  <Select value={targetYear} onValueChange={setTargetYear}>
+                    <SelectTrigger className="glass rounded-2xl h-11 bg-white/60">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {yearOptions.map((y) => (
+                        <SelectItem key={y} value={y}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           )}
 
