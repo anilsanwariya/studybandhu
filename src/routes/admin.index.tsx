@@ -23,7 +23,6 @@ interface Exam {
   slug: string;
   description: string | null;
   is_published: boolean;
-  level_schema: string[];
 }
 interface DbNode {
   id: string;
@@ -37,7 +36,7 @@ interface TreeNode extends DbNode {
   children: TreeNode[];
 }
 
-const DEFAULT_SCHEMA = ["subject", "chapter", "topic", "subtopic"];
+const SCHEMA = ["subject", "chapter", "topic", "subtopic"] as const;
 
 function AdminPanel() {
   const nav = useNavigate();
