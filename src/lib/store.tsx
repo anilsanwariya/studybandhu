@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { mockSyllabus, type SyllabusNode, type Status } from "./mock-syllabus";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
 
 interface StoreState {
