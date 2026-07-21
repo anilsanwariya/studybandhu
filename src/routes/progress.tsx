@@ -37,9 +37,11 @@ interface SubjectStat {
 }
 
 function collectTopics(node: SyllabusNode, out: SyllabusNode[]) {
-  if ((node.type === "topic" || node.type === "subtopic") && !node.excluded) out.push(node);
+  const isLeaf = !node.children || node.children.length === 0;
+  if (isLeaf && !node.excluded) out.push(node);
   node.children?.forEach((c) => collectTopics(c, out));
 }
+
 
 function masteryBadge(status: Status, rev: number) {
   if (status === "mastered") return { label: "Mastered", cls: "bg-mint/70" };
