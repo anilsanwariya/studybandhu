@@ -45,6 +45,8 @@ interface AuthCtx {
     username: string;
     targetExam: string;
     targetExamId?: string;
+    academicBackground?: string;
+    targetYear?: string;
     selectedSubjects: string[];
     selectedChapters: string[];
   }) => Promise<void>;
