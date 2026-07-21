@@ -29,6 +29,28 @@ export const Route = createFileRoute("/syllabus")({
 function SyllabusPage() {
   const { tree } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [chapterFilter, setChapterFilter] = useState("all");
+
+  const subjects = tree.map((n) => ({ id: n.id, title: n.title }));
+  const chapters = (
+    subjectFilter === "all" ? tree : tree.filter((n) => n.id === subjectFilter)
+  ).flatMap((s) => (s.children ?? []).map((c) => ({ id: c.id, title: c.title })));
+
+  const scopedTree: SyllabusNode[] = (() => {
+    if (subjectFilter === "all" && chapterFilter === "all") return tree;
+    const walk = (list: SyllabusNode[]): SyllabusNode[] => {
+      const out: SyllabusNode[] = [];
+      for (const n of list) {
+        if (subjectFilter !== "all" && n.depth === 0 && n.id !== subjectFilter) continue;
+        if (chapterFilter !== "all" && n.depth === 1 && n.id !== chapterFilter) continue;
+        const kids = n.children ? walk(n.children) : undefined;
+        out.push({ ...n, children: kids });
+      }
+      return out;
+    };
+    return walk(tree);
+  })();
 
   return (
     <AppShell>
@@ -48,10 +70,40 @@ function SyllabusPage() {
         </div>
       </div>
 
+      <div className="glass rounded-2xl p-3 mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-1">
+          <Filter className="h-3.5 w-3.5" /> Filter
+        </div>
+        <Select value={subjectFilter} onValueChange={(v) => { setSubjectFilter(v); setChapterFilter("all"); }}>
+          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 w-auto min-w-[10rem] text-sm">
+            <SelectValue placeholder="Subject" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All subjects</SelectItem>
+            {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={chapterFilter} onValueChange={setChapterFilter} disabled={chapters.length === 0}>
+          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 w-auto min-w-[10rem] text-sm">
+            <SelectValue placeholder="Chapter" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All chapters</SelectItem>
+            {chapters.map((c) => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(subjectFilter !== "all" || chapterFilter !== "all") && (
+          <Button size="sm" variant="ghost" className="rounded-full h-8 text-xs"
+            onClick={() => { setSubjectFilter("all"); setChapterFilter("all"); }}>
+            Clear
+          </Button>
+        )}
+      </div>
+
       <div className="glass-strong rounded-3xl p-3 sm:p-4 lg:p-6">
         <div className="overflow-x-auto -mx-1 px-1">
           <div className="space-y-2 min-w-[320px]">
-            {tree.map((node) => (
+            {scopedTree.map((node) => (
               <TreeNode key={node.id} node={node} depth={0} onOpen={setOpenId} />
             ))}
           </div>
