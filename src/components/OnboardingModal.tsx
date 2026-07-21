@@ -160,12 +160,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
         const sameExam = editMode && examId === user?.targetExamId;
         const savedSubjects = user?.selectedSubjectIds ?? user?.selectedSubjects ?? [];
         const savedChapters = user?.selectedChapterIds ?? user?.selectedChapters ?? [];
-        setSelectedSubjects(
-          sameExam && savedSubjects.length ? savedSubjects : allSubjects,
-        );
-        setSelectedChapters(
-          sameExam && savedChapters.length ? savedChapters : allChapters,
-        );
+        setSelectedSubjects(sameExam && savedSubjects.length ? savedSubjects : allSubjects);
+        setSelectedChapters(sameExam && savedChapters.length ? savedChapters : allChapters);
       });
     return () => {
       cancelled = true;
@@ -228,8 +224,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
         await completeOnboarding(payload);
       }
       toast.success(editMode ? "Preferences updated" : "You're all set!");
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to save");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
     }
     setSaving(false);
   };
@@ -255,9 +251,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       setExpandedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
     } else {
       setSelectedSubjects((prev) => prev.filter((id) => id !== subject.id));
-      setSelectedChapters((prev) =>
-        prev.filter((id) => !chapterIds.includes(id)),
-      );
+      setSelectedChapters((prev) => prev.filter((id) => !chapterIds.includes(id)));
     }
   };
 
@@ -329,9 +323,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   {uState === "checking" && (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
-                  {uState === "available" && (
-                    <Check className="h-4 w-4 text-emerald-600" />
-                  )}
+                  {uState === "available" && <Check className="h-4 w-4 text-emerald-600" />}
                   {(uState === "taken" || uState === "invalid") && (
                     <X className="h-4 w-4 text-rose-500" />
                   )}
@@ -344,9 +336,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   </span>
                 )}
                 {uState === "taken" && (
-                  <span className="text-rose-600 font-medium">
-                    That username is taken.
-                  </span>
+                  <span className="text-rose-600 font-medium">That username is taken.</span>
                 )}
                 {uState === "invalid" && (
                   <span className="text-rose-600 font-medium">
@@ -357,9 +347,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   <span className="text-muted-foreground">Checking availability…</span>
                 )}
                 {uState === "idle" && (
-                  <span className="text-muted-foreground">
-                    Choose something you'll remember.
-                  </span>
+                  <span className="text-muted-foreground">Choose something you'll remember.</span>
                 )}
               </div>
             </div>
@@ -376,7 +364,9 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 <div className="glass rounded-2xl p-6 text-center">
                   <BookOpen className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                   <p className="text-sm font-medium">No exams available yet.</p>
-                  <p className="text-xs text-muted-foreground mt-1">Ask an admin to publish an exam.</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ask an admin to publish an exam.
+                  </p>
                 </div>
               )}
               {exams.map((e) => {
@@ -430,8 +420,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 const checkedChapters = chapterIds.filter((id) =>
                   selectedChapters.includes(id),
                 ).length;
-                const subjectChecked =
-                  selectedSubjects.includes(subject.id) && checkedChapters > 0;
+                const subjectChecked = selectedSubjects.includes(subject.id) && checkedChapters > 0;
                 return (
                   <div key={subject.id} className="glass rounded-2xl p-3">
                     <div className="flex items-center gap-3">
@@ -446,12 +435,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                         }
                         className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/60"
                       >
-                        <ChevronRight
-                          className={cn(
-                            "h-4 w-4 transition-transform",
-                            openSubject && "rotate-90",
-                          )}
-                        />
+                        <ChevronRight className={cn("h-4 w-4 transition-transform", openSubject && "rotate-90")} />
                       </button>
                       <Checkbox
                         checked={subjectChecked}
@@ -528,7 +512,11 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 Continue
               </Button>
             ) : (
-              <Button className="flex-1 rounded-full" onClick={finish} disabled={!canFinish || saving}>
+              <Button
+                className="flex-1 rounded-full"
+                onClick={finish}
+                disabled={!canFinish || saving}
+              >
                 {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 {editMode ? "Save changes" : "Finish Setup"}
               </Button>
