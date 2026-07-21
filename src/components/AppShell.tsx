@@ -4,6 +4,7 @@ import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+import { TopBar } from "./TopBar";
 
 const nav = [
   { to: "/", label: "Morning Intent", icon: Home },
@@ -115,6 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="flex-1 p-4 lg:p-8 pt-0 lg:pt-8 min-w-0">
+        <TopBar />
         {children}
       </main>
     </div>

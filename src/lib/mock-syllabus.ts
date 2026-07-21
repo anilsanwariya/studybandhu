@@ -9,6 +9,8 @@ export interface SyllabusNode {
   note?: string;
   url?: string;
   dueToday?: boolean;
+  revisionCount?: number;
+  nextRevisionAt?: string | null;
   children?: SyllabusNode[];
 }
 

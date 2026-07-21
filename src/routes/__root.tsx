@@ -14,6 +14,9 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { StoreProvider } from "../lib/store";
 import { AuthProvider } from "../lib/auth";
 import { OnboardingModal } from "../components/OnboardingModal";
+import { DailyStreakModal } from "../components/DailyStreakModal";
+import { XpFeedback } from "../components/XpFeedback";
+import { Toaster } from "../components/ui/sonner";
 
 
 function NotFoundComponent() {
@@ -128,6 +131,9 @@ function RootComponent() {
         <StoreProvider>
           <Outlet />
           <OnboardingModal />
+          <DailyStreakModal />
+          <XpFeedback />
+          <Toaster position="top-right" />
         </StoreProvider>
       </AuthProvider>
     </QueryClientProvider>
