@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2, Plus, LogOut, Upload, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Admin — StudyBandhu" }, { name: "robots", content: "noindex, nofollow" }] }),
   component: AdminPanel,
 });
