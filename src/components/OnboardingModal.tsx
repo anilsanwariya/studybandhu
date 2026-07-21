@@ -498,67 +498,72 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   </p>
                 </div>
               )}
-              {syllabus.map((subject) => {
-                const openSubject = expandedSubjects.includes(subject.id);
-                const chapterIds = subject.chapters.map((chapter) => chapter.id);
-                const checkedChapters = chapterIds.filter((id) =>
-                  selectedChapters.includes(id),
-                ).length;
-                const subjectChecked = selectedSubjects.includes(subject.id) && checkedChapters > 0;
+              {syllabus.map((l1) => {
+                const openL1 = expandedSubjects.includes(l1.id);
+                const l2Ids = l1.children.map((c) => c.id);
+                const checkedL2 = l2Ids.filter((id) => selectedChapters.includes(id)).length;
+                const l1Checked = selectedSubjects.includes(l1.id) && (checkedL2 > 0 || l1.children.length === 0);
                 return (
-                  <div key={subject.id} className="glass rounded-2xl p-3">
+                  <div key={l1.id} className="glass rounded-2xl p-3">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() =>
                           setExpandedSubjects((prev) =>
-                            openSubject
-                              ? prev.filter((id) => id !== subject.id)
-                              : [...prev, subject.id],
+                            openL1
+                              ? prev.filter((id) => id !== l1.id)
+                              : [...prev, l1.id],
                           )
                         }
                         className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/60"
+                        disabled={!hasL2 || l1.children.length === 0}
                       >
                         <ChevronRight
-                          className={cn("h-4 w-4 transition-transform", openSubject && "rotate-90")}
+                          className={cn("h-4 w-4 transition-transform", openL1 && "rotate-90")}
                         />
                       </button>
                       <Checkbox
-                        checked={subjectChecked}
-                        onCheckedChange={(v) => toggleSubject(subject, v === true)}
+                        checked={l1Checked}
+                        onCheckedChange={(v) => toggleSubject(l1, v === true)}
                       />
                       <button
                         type="button"
-                        onClick={() => toggleSubject(subject, !subjectChecked)}
+                        onClick={() => toggleSubject(l1, !l1Checked)}
                         className="flex-1 min-w-0 text-left"
                       >
-                        <div className="text-sm font-semibold truncate">{subject.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {checkedChapters}/{subject.chapters.length} chapters selected
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {l1Label}
                         </div>
+                        <div className="text-sm font-semibold truncate">{l1.title}</div>
+                        {hasL2 && l1.children.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {checkedL2}/{l1.children.length} {l2Label} selected
+                          </div>
+                        )}
                       </button>
                     </div>
-                    {openSubject && (
+                    {openL1 && hasL2 && l1.children.length > 0 && (
                       <div className="mt-3 ml-10 space-y-2">
-                        {subject.chapters.map((chapter) => {
-                          const chapterChecked = selectedChapters.includes(chapter.id);
+                        {l1.children.map((l2) => {
+                          const l2Checked = selectedChapters.includes(l2.id);
                           return (
                             <label
-                              key={chapter.id}
+                              key={l2.id}
                               className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/45 cursor-pointer"
                             >
                               <Checkbox
-                                checked={chapterChecked}
+                                checked={l2Checked}
                                 onCheckedChange={(v) =>
-                                  toggleChapter(subject, chapter.id, v === true)
+                                  toggleChapter(l1, l2.id, v === true)
                                 }
                               />
                               <span className="flex-1 min-w-0 text-sm font-medium truncate">
-                                {chapter.title}
+                                {l2.title}
                               </span>
                               <span className="text-[11px] text-muted-foreground shrink-0">
-                                {chapter.topicCount} topics
+                                {l2.descendantCount} items
                               </span>
+
                             </label>
                           );
                         })}
