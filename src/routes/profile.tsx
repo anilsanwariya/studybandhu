@@ -106,6 +106,7 @@ function ProfilePage() {
           </div>
         </section>
       </div>
+      <OnboardingModal open={editOpen} onOpenChange={setEditOpen} editMode />
     </AppShell>
   );
 }
