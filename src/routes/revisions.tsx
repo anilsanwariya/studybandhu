@@ -127,6 +127,42 @@ function RevisionsPage() {
             Recall it in your head. Then schedule the next revision — your call.
           </p>
 
+          {subtopics.length > 0 && (
+            <div className="mt-6 glass rounded-2xl p-4 text-left max-w-lg mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Subtopics
+                </span>
+                <span className="text-xs font-medium text-foreground/70">
+                  {checkedCount}/{subtopics.length} recalled
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {subtopics.map((s) => {
+                  const on = !!checks[s.id];
+                  return (
+                    <label
+                      key={s.id}
+                      className={cn(
+                        "flex items-start gap-3 rounded-xl px-3 py-2 cursor-pointer transition-colors",
+                        on ? "bg-mint/40" : "hover:bg-white/50",
+                      )}
+                    >
+                      <Checkbox
+                        checked={on}
+                        onCheckedChange={(v) => setSubtopicChecked(current.id, s.id, v === true)}
+                        className="mt-0.5"
+                      />
+                      <span className={cn("text-sm flex-1", on && "line-through text-muted-foreground")}>
+                        {s.title}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <Tabs defaultValue="auto" className="mt-8">
             <TabsList className="bg-white/40 backdrop-blur border border-white/50 rounded-full p-1 h-auto mx-auto">
               <TabsTrigger value="auto" className="rounded-full data-[state=active]:bg-white gap-1.5"><Zap className="h-3.5 w-3.5" /> Auto</TabsTrigger>
