@@ -67,16 +67,34 @@ function RevisionsPage() {
   const pushAll = () => setIdx(bucketNodes.length);
   const advance = () => setIdx((i) => i + 1);
 
+  const subtopics = (current.children ?? []).filter((c) => !c.hidden);
+  const checks = current.subtopicChecks ?? {};
+  const checkedCount = subtopics.filter((s) => checks[s.id]).length;
+  const allChecked = subtopics.length === 0 || checkedCount === subtopics.length;
+
+  const guarded = (fn: () => void) => {
+    if (allChecked) fn();
+    else setPendingSubmit(() => fn);
+  };
+
   const handleAuto = (r: "hard" | "medium" | "easy") => {
-    rateTopic(current.id, r);
-    // current is removed from bucket, keep idx
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      rateTopic(current.id, r);
+    });
   };
   const handlePreset = (days: number) => {
-    scheduleRevision(current.id, days);
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      scheduleRevision(current.id, days);
+    });
   };
   const handleCustom = () => {
     const n = Math.max(0, Math.min(365, parseInt(customDays || "0", 10) || 0));
-    scheduleRevision(current.id, n);
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      scheduleRevision(current.id, n);
+    });
   };
 
   const progress = (idx / bucketNodes.length) * 100;
