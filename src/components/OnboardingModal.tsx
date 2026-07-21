@@ -38,6 +38,7 @@ interface Exam {
   name: string;
   description: string | null;
   slug: string;
+  level_schema: string[];
 }
 
 interface SyllabusRow {
@@ -46,13 +47,20 @@ interface SyllabusRow {
   title: string;
   node_type: string;
   sort_order: number;
+  depth: number;
 }
 
-interface SubjectOption {
+interface L2Option {
   id: string;
   title: string;
-  chapters: { id: string; title: string; topicCount: number }[];
+  descendantCount: number;
 }
+interface L1Option {
+  id: string;
+  title: string;
+  children: L2Option[];
+}
+
 
 interface Props {
   open?: boolean;
