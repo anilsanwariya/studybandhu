@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { mockSyllabus, type SyllabusNode, type Status } from "./mock-syllabus";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
 
 interface StoreState {
@@ -66,7 +68,40 @@ function daysFromToday(days: number): string {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>(mockSyllabus);
+
+  // Load syllabus tree from DB when user has a target exam.
+  useEffect(() => {
+    const examId = user?.targetExamId;
+    if (!examId) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("syllabus_nodes")
+        .select("id, parent_id, title, node_type, sort_order")
+        .eq("exam_id", examId)
+        .order("sort_order");
+      if (error || !data || data.length === 0) return;
+      const byParent = new Map<string | null, any[]>();
+      for (const row of data) {
+        const arr = byParent.get(row.parent_id) ?? [];
+        arr.push(row);
+        byParent.set(row.parent_id, arr);
+      }
+      const build = (parentId: string | null): SyllabusNode[] => {
+        const rows = byParent.get(parentId) ?? [];
+        return rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          type: r.node_type as SyllabusNode["type"],
+          status: "unread" as Status,
+          children: build(r.id),
+        }));
+      };
+      setTree(build(null));
+    })();
+  }, [user?.targetExamId]);
+
   const [bucket, setBucket] = useState<string[]>([]);
   const [streak] = useState(7);
   const [xp, setXp] = useState(1240);
