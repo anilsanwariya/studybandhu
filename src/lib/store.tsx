@@ -314,6 +314,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: StoreCtx = {
     tree,
     syllabusLoading,
+    levelSchema,
     bucket,
     dailyLimit,
     streak,
