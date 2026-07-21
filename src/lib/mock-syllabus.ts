@@ -3,7 +3,10 @@ export type Status = "unread" | "first-read" | "mastered" | "needs-revision";
 export interface SyllabusNode {
   id: string;
   title: string;
-  type: "subject" | "chapter" | "topic" | "subtopic";
+  /** Free-form level label defined by the exam's level_schema (e.g. "paper", "unit", "subject"). */
+  type: string;
+  /** 0 = root child of exam. Used together with exam.level_schema to label the node. */
+  depth: number;
   status: Status;
   excluded?: boolean;
   note?: string;
@@ -13,6 +16,7 @@ export interface SyllabusNode {
   nextRevisionAt?: string | null;
   children?: SyllabusNode[];
 }
+
 
 const t = (id: string, title: string, status: Status = "unread", dueToday = false): SyllabusNode => ({
   id, title, type: "subtopic", status, dueToday,
