@@ -1,12 +1,23 @@
 export type Status = "unread" | "first-read" | "mastered" | "needs-revision";
 
+/** Fixed hierarchy for every exam. */
+export const LEVEL_SCHEMA = ["subject", "chapter", "topic", "subtopic"] as const;
+export type NodeType = (typeof LEVEL_SCHEMA)[number];
+
 export interface SyllabusNode {
   id: string;
   title: string;
-  /** Free-form level label defined by the exam's level_schema (e.g. "paper", "unit", "subject"). */
-  type: string;
-  /** 0 = root child of exam. Used together with exam.level_schema to label the node. */
+  /** One of the fixed levels: subject / chapter / topic / subtopic. */
+  type: NodeType | string;
+  /** 0 = subject, 1 = chapter, 2 = topic, 3 = subtopic. */
   depth: number;
+  /** Whether this node was added by the student or by admin. */
+  kind: "admin" | "user";
+  /** Only set for student-owned rows; needed to reparent/edit on the server. */
+  parentKind?: "admin" | "user" | null;
+  parentId?: string | null;
+  /** Admin node that the current student has hidden. Still visible in Syllabus with Unhide affordance. */
+  hidden?: boolean;
   status: Status;
   excluded?: boolean;
   note?: string;
@@ -14,6 +25,8 @@ export interface SyllabusNode {
   dueToday?: boolean;
   revisionCount?: number;
   nextRevisionAt?: string | null;
+  /** For topic nodes: per-subtopic checkbox state (persisted locally). */
+  subtopicChecks?: Record<string, boolean>;
   children?: SyllabusNode[];
 }
 
