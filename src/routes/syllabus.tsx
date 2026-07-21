@@ -370,11 +370,7 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => {
-        if (!o) { setTitle(""); onClose(); }
-        else if (edit?.mode === "edit") setTitle(edit.node.title);
-        else setTitle("");
-      }}
+      onOpenChange={(o) => { if (!o) { setTitle(""); onClose(); } }}
     >
       <DialogContent className="glass-strong">
         <DialogHeader>
