@@ -26,6 +26,7 @@ interface SyllabusDbRow {
 interface StoreState {
   tree: SyllabusNode[];
   syllabusLoading: boolean;
+  levelSchema: string[];
   bucket: string[];
   dailyLimit: number;
   streak: number;
@@ -101,6 +102,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
+  const [levelSchema, setLevelSchema] = useState<string[]>([]);
 
   // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
@@ -312,6 +314,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: StoreCtx = {
     tree,
     syllabusLoading,
+    levelSchema,
     bucket,
     dailyLimit,
     streak,
