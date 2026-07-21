@@ -1,11 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/lib/auth";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, Pencil, SlidersHorizontal } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Mail, GraduationCap, BookOpen, Calendar, Flame, Zap, CheckCircle2, LogOut, KeyRound, AtSign, SlidersHorizontal, Loader2, Check, X } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -22,9 +29,10 @@ function initials(name: string) {
 }
 
 function ProfilePage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateUser } = useAuth();
   const { streak, xp, flatTopics } = useStore();
   const [editOpen, setEditOpen] = useState(false);
+  const [usernameOpen, setUsernameOpen] = useState(false);
 
   if (!user) {
     return (
