@@ -124,12 +124,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setTree([]);
         return;
       }
-      const selectedSubjects = new Set(
-        user.selectedSubjectIds ?? user.selectedSubjects ?? [],
-      );
-      const selectedChapters = new Set(
-        user.selectedChapterIds ?? user.selectedChapters ?? [],
-      );
+      const selectedSubjects = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
+      const selectedChapters = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
       const hasSubjectSelection = selectedSubjects.size > 0;
       const hasChapterSelection = selectedChapters.size > 0;
       const byParent = new Map<string | null, SyllabusDbRow[]>();
@@ -193,13 +189,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const newTargets = flatTopics.filter((n) => n.status === "unread");
   const dueToday = flatTopics.filter((n) => n.dueToday && n.status !== "unread");
-  const bucketNodes = bucket.map((id) => flatTopics.find((n) => n.id === id)).filter(Boolean) as SyllabusNode[];
+  const bucketNodes = bucket
+    .map((id) => flatTopics.find((n) => n.id === id))
+    .filter(Boolean) as SyllabusNode[];
 
-  const findNode = useCallback((id: string) => {
-    let found: SyllabusNode | undefined;
-    walk(tree, (n) => { if (n.id === id) found = n; });
-    return found;
-  }, [tree]);
+  const findNode = useCallback(
+    (id: string) => {
+      let found: SyllabusNode | undefined;
+      walk(tree, (n) => {
+        if (n.id === id) found = n;
+      });
+      return found;
+    },
+    [tree],
+  );
 
   const addToBucket = useCallback((id: string) => {
     setBucket((b) => (b.includes(id) || b.length >= dailyLimit ? b : [...b, id]));
@@ -239,51 +242,90 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const clearAward = useCallback(() => setLastAward(null), []);
 
-  const rateTopic = useCallback((id: string, rating: "hard" | "medium" | "easy" | "push") => {
-    let newStatus: Status = "first-read";
-    let nextDue = false;
-    let nextRevisionAt: string | null = null;
-    if (rating === "hard") { newStatus = "needs-revision"; nextDue = true; nextRevisionAt = daysFromToday(1); }
-    else if (rating === "medium") { newStatus = "first-read"; nextRevisionAt = daysFromToday(3); }
-    else if (rating === "easy") { newStatus = "mastered"; nextRevisionAt = daysFromToday(7); }
-    else if (rating === "push") { nextDue = true; }
+  const rateTopic = useCallback(
+    (id: string, rating: "hard" | "medium" | "easy" | "push") => {
+      let newStatus: Status = "first-read";
+      let nextDue = false;
+      let nextRevisionAt: string | null = null;
+      if (rating === "hard") {
+        newStatus = "needs-revision";
+        nextDue = true;
+        nextRevisionAt = daysFromToday(1);
+      } else if (rating === "medium") {
+        newStatus = "first-read";
+        nextRevisionAt = daysFromToday(3);
+      } else if (rating === "easy") {
+        newStatus = "mastered";
+        nextRevisionAt = daysFromToday(7);
+      } else if (rating === "push") {
+        nextDue = true;
+      }
 
-    setTree((t) => mapTree(t, (n) => {
-      if (n.id !== id) return n;
-      if (rating === "push") return { ...n, dueToday: true };
-      return {
-        ...n,
-        status: newStatus,
-        dueToday: nextDue,
-        nextRevisionAt,
-        revisionCount: (n.revisionCount ?? 0) + 1,
-      };
-    }));
+      setTree((t) =>
+        mapTree(t, (n) => {
+          if (n.id !== id) return n;
+          if (rating === "push") return { ...n, dueToday: true };
+          return {
+            ...n,
+            status: newStatus,
+            dueToday: nextDue,
+            nextRevisionAt,
+            revisionCount: (n.revisionCount ?? 0) + 1,
+          };
+        }),
+      );
 
-    if (rating !== "push") {
+      if (rating !== "push") {
+        setBucket((b) => b.filter((x) => x !== id));
+        const gain = rating === "easy" ? 20 : rating === "medium" ? 15 : 10;
+        awardXp(gain, `${rating[0].toUpperCase()}${rating.slice(1)} recall`);
+      }
+    },
+    [awardXp],
+  );
+
+  const scheduleRevision = useCallback(
+    (id: string, days: number) => {
+      setTree((t) =>
+        mapTree(t, (n) =>
+          n.id === id
+            ? {
+                ...n,
+                status: "needs-revision",
+                dueToday: days === 0,
+                nextRevisionAt: daysFromToday(days),
+                revisionCount: (n.revisionCount ?? 0) + 1,
+              }
+            : n,
+        ),
+      );
       setBucket((b) => b.filter((x) => x !== id));
-      const gain = rating === "easy" ? 20 : rating === "medium" ? 15 : 10;
-      awardXp(gain, `${rating[0].toUpperCase()}${rating.slice(1)} recall`);
-    }
-  }, [awardXp]);
-
-  const scheduleRevision = useCallback((id: string, days: number) => {
-    setTree((t) => mapTree(t, (n) => n.id === id ? {
-      ...n,
-      status: "needs-revision",
-      dueToday: days === 0,
-      nextRevisionAt: daysFromToday(days),
-      revisionCount: (n.revisionCount ?? 0) + 1,
-    } : n));
-    setBucket((b) => b.filter((x) => x !== id));
-    awardXp(12, `Scheduled in ${days}d`);
-  }, [awardXp]);
+      awardXp(12, `Scheduled in ${days}d`);
+    },
+    [awardXp],
+  );
 
   const value: StoreCtx = {
-    tree, syllabusLoading, bucket, dailyLimit, streak, xp,
-    flatTopics, newTargets, dueToday, bucketNodes,
-    lastAward, clearAward,
-    addToBucket, removeFromBucket, updateNode, resetNode, rateTopic, scheduleRevision, awardXp, findNode,
+    tree,
+    syllabusLoading,
+    bucket,
+    dailyLimit,
+    streak,
+    xp,
+    flatTopics,
+    newTargets,
+    dueToday,
+    bucketNodes,
+    lastAward,
+    clearAward,
+    addToBucket,
+    removeFromBucket,
+    updateNode,
+    resetNode,
+    rateTopic,
+    scheduleRevision,
+    awardXp,
+    findNode,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

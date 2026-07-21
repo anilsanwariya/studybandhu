@@ -232,8 +232,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
 
   const canContinue1 = uState === "available";
   const canContinue2 = !!examId;
-  const canFinish =
-    !!examId && selectedSubjects.length > 0 && selectedChapters.length > 0;
+  const canFinish = !!examId && selectedSubjects.length > 0 && selectedChapters.length > 0;
 
   const onExamSelect = (id: string) => {
     if (id === examId) return;
@@ -435,7 +434,9 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                         }
                         className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/60"
                       >
-                        <ChevronRight className={cn("h-4 w-4 transition-transform", openSubject && "rotate-90")} />
+                        <ChevronRight
+                          className={cn("h-4 w-4 transition-transform", openSubject && "rotate-90")}
+                        />
                       </button>
                       <Checkbox
                         checked={subjectChecked}

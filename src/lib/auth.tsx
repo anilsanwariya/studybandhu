@@ -33,10 +33,7 @@ interface AuthCtx {
   isAuthenticated: boolean;
   isAdmin: boolean;
   needsOnboarding: boolean;
-  signInWithPassword: (
-    email: string,
-    password: string,
-  ) => Promise<{ error?: string }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ error?: string }>;
   signUpWithPassword: (
     email: string,
     password: string,
