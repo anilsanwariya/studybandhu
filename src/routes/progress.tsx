@@ -60,7 +60,7 @@ function nextDueLabel(iso?: string | null) {
 }
 
 function ProgressPage() {
-  const { tree, flatTopics, streak, xp, awardXp } = useStore();
+  const { tree, flatTopics, streak, xp, awardXp, levelSchema } = useStore();
   const info = levelFromXp(xp);
 
   const data = useMemo(() => {
@@ -78,20 +78,36 @@ function ProgressPage() {
   const mastered = data.find((d) => d.name === "Mastered")?.value ?? 0;
   const pct = total ? Math.round((mastered / total) * 100) : 0;
 
-  const subjectStats: SubjectStat[] = useMemo(() => tree.map((subj) => {
-    const list: SyllabusNode[] = [];
-    subj.children?.forEach((c) => collectTopics(c, list));
-    const mastered = list.filter((n) => n.status === "mastered").length;
-    const firstRead = list.filter((n) => n.status === "first-read" || n.status === "needs-revision").length;
-    return {
-      id: subj.id,
-      title: subj.title,
-      total: list.length,
-      mastered,
-      firstRead,
-      pct: list.length ? Math.round(((mastered + firstRead * 0.5) / list.length) * 100) : 0,
+  // Find the "subject" level in the exam's schema — fall back to depth 0.
+  const subjectDepth = useMemo(() => {
+    const i = levelSchema.findIndex((s) => s?.toLowerCase() === "subject");
+    return i >= 0 ? i : 0;
+  }, [levelSchema]);
+
+  const subjectStats: SubjectStat[] = useMemo(() => {
+    const subjectNodes: SyllabusNode[] = [];
+    const collectAtDepth = (nodes: SyllabusNode[]) => {
+      for (const n of nodes) {
+        if (n.depth === subjectDepth) subjectNodes.push(n);
+        else if (n.children) collectAtDepth(n.children);
+      }
     };
-  }), [tree]);
+    collectAtDepth(tree);
+    return subjectNodes.map((subj) => {
+      const list: SyllabusNode[] = [];
+      collectTopics(subj, list);
+      const masteredN = list.filter((n) => n.status === "mastered").length;
+      const firstRead = list.filter((n) => n.status === "first-read" || n.status === "needs-revision").length;
+      return {
+        id: subj.id,
+        title: subj.title,
+        total: list.length,
+        mastered: masteredN,
+        firstRead,
+        pct: list.length ? Math.round(((masteredN + firstRead * 0.5) / list.length) * 100) : 0,
+      };
+    });
+  }, [tree, subjectDepth]);
 
   return (
     <AppShell>
