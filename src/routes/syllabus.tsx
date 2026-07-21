@@ -125,24 +125,24 @@ function TreeNode({ node, depth, onOpen }: { node: SyllabusNode; depth: number; 
     <div>
       <div
         className={cn(
-          "group flex items-center gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all",
+          "group flex items-start gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all min-w-0",
           "hover:bg-white/50 cursor-pointer",
           node.excluded && "opacity-40",
         )}
         style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
         {hasChildren ? (
-          <button onClick={() => setExpanded((e) => !e)} className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-white/60 shrink-0">
+          <button onClick={() => setExpanded((e) => !e)} className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-white/60 shrink-0 mt-0.5">
             <ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} />
           </button>
         ) : (
           <span className="h-6 w-6 shrink-0" />
         )}
-        <StatusDot status={node.status} />
+        <span className="mt-1.5 shrink-0"><StatusDot status={node.status} /></span>
         <button
           onClick={() => onOpen(node.id)}
           className={cn(
-            "flex-1 text-left text-sm min-w-0 truncate",
+            "flex-1 text-left text-sm min-w-0 break-words",
             node.depth === 0 && "font-semibold text-base",
             node.depth === 1 && "font-medium",
             node.excluded && "line-through",
