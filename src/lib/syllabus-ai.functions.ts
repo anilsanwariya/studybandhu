@@ -6,18 +6,8 @@ const InputSchema = z.object({
   fileBase64: z.string().min(10),
   mimeType: z.string().default("application/pdf"),
   hint: z.string().optional(),
+  levelSchema: z.array(z.string().min(1)).min(1).default(["subject", "chapter", "topic", "subtopic"]),
 });
-
-const SYSTEM = `You are a syllabus parser for competitive exam preparation.
-Given a syllabus document, extract a strict hierarchical outline as JSON.
-The hierarchy has up to 4 levels: subject -> chapter -> topic -> subtopic.
-Only output valid JSON matching this TypeScript type, no prose:
-{ "nodes": Array<{ "title": string; "type": "subject"|"chapter"|"topic"|"subtopic"; "children"?: same[] }> }
-Rules:
-- Top-level items MUST be type "subject".
-- Preserve the source's numbering/ordering as-is in titles when meaningful.
-- Do not invent content that isn't in the document.
-- Trim whitespace, keep titles concise.`;
 
 export const parseSyllabusPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -33,6 +23,26 @@ export const parseSyllabusPdf = createServerFn({ method: "POST" })
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
+    const schema = data.levelSchema;
+    const chain = schema.join(" > ");
+    const SYSTEM = `You are a syllabus parser for competitive exam preparation.
+Given a syllabus document, extract a strict hierarchical outline as JSON matching THIS exam's level schema.
+
+Level schema for THIS exam (in order, top to bottom): ${chain}
+- Depth 0 nodes MUST have type "${schema[0]}".
+- Each deeper level uses the next label in the schema.
+- Do NOT invent levels that are not in the schema; if the document is flatter, stop at the level it actually reaches.
+- Do NOT introduce labels outside the schema.
+
+Output ONLY valid JSON, no prose:
+{ "nodes": Array<{ "title": string; "type": string; "depth": number; "children"?: same[] }> }
+Rules:
+- "type" MUST be one of: ${schema.map((s) => `"${s}"`).join(", ")}.
+- "depth" MUST equal the index of "type" in the schema (0-based).
+- Preserve the source's numbering/ordering as-is in titles when meaningful.
+- Do not invent content that isn't in the document.
+- Trim whitespace, keep titles concise.`;
+
     const body = {
       model: "google/gemini-2.5-pro",
       messages: [
@@ -40,7 +50,12 @@ export const parseSyllabusPdf = createServerFn({ method: "POST" })
         {
           role: "user",
           content: [
-            { type: "text", text: data.hint ? `Context: ${data.hint}\n\nExtract the syllabus outline as JSON.` : "Extract the syllabus outline as JSON." },
+            {
+              type: "text",
+              text: data.hint
+                ? `Context: ${data.hint}\n\nExtract the syllabus outline as JSON using the level schema: ${chain}.`
+                : `Extract the syllabus outline as JSON using the level schema: ${chain}.`,
+            },
             {
               type: "file",
               file: {
@@ -78,5 +93,5 @@ export const parseSyllabusPdf = createServerFn({ method: "POST" })
     } catch {
       throw new Error("AI returned invalid JSON. Try again.");
     }
-    return parsed as { nodes: Array<{ title: string; type: string; children?: any[] }> };
+    return parsed as { nodes: Array<{ title: string; type: string; depth?: number; children?: any[] }> };
   });

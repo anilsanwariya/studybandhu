@@ -21,6 +21,7 @@ export type Database = {
           description: string | null
           id: string
           is_published: boolean
+          level_schema: Json
           name: string
           slug: string
           updated_at: string
@@ -31,6 +32,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean
+          level_schema?: Json
           name: string
           slug: string
           updated_at?: string
@@ -41,6 +43,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean
+          level_schema?: Json
           name?: string
           slug?: string
           updated_at?: string
@@ -95,6 +98,7 @@ export type Database = {
       syllabus_nodes: {
         Row: {
           created_at: string
+          depth: number
           exam_id: string
           id: string
           node_type: string
@@ -104,6 +108,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          depth?: number
           exam_id: string
           id?: string
           node_type: string
@@ -113,6 +118,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          depth?: number
           exam_id?: string
           id?: string
           node_type?: string

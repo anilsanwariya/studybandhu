@@ -38,6 +38,7 @@ interface Exam {
   name: string;
   description: string | null;
   slug: string;
+  level_schema: string[];
 }
 
 interface SyllabusRow {
@@ -46,13 +47,20 @@ interface SyllabusRow {
   title: string;
   node_type: string;
   sort_order: number;
+  depth: number;
 }
 
-interface SubjectOption {
+interface L2Option {
   id: string;
   title: string;
-  chapters: { id: string; title: string; topicCount: number }[];
+  descendantCount: number;
 }
+interface L1Option {
+  id: string;
+  title: string;
+  children: L2Option[];
+}
+
 
 interface Props {
   open?: boolean;
@@ -71,7 +79,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   const [checkTimer, setCheckTimer] = useState<number | null>(null);
   const [examId, setExamId] = useState<string>("");
   const [exams, setExams] = useState<Exam[]>([]);
-  const [syllabus, setSyllabus] = useState<SubjectOption[]>([]);
+  const [syllabus, setSyllabus] = useState<L1Option[]>([]);
   const [loadingExams, setLoadingExams] = useState(false);
   const [loadingSyllabus, setLoadingSyllabus] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
@@ -92,16 +100,29 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     "Other",
   ];
 
+  const currentExam = exams.find((e) => e.id === examId);
+  const schema = currentExam?.level_schema ?? ["subject", "chapter", "topic", "subtopic"];
+  const l1Label = schema[0] ?? "subject";
+  const l2Label = schema[1] ?? "chapter";
+  const hasL2 = schema.length > 1;
+
   useEffect(() => {
     if (!isOpen) return;
     setLoadingExams(true);
     supabase
       .from("exams")
-      .select("id, name, description, slug")
+      .select("id, name, description, slug, level_schema")
       .eq("is_published", true)
       .order("name")
       .then(({ data }) => {
-        setExams((data as Exam[]) ?? []);
+        setExams(
+          ((data as any[]) ?? []).map((e) => ({
+            ...e,
+            level_schema: Array.isArray(e.level_schema)
+              ? e.level_schema
+              : ["subject", "chapter", "topic", "subtopic"],
+          })) as Exam[],
+        );
         setLoadingExams(false);
       });
   }, [isOpen]);
@@ -138,7 +159,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     setLoadingSyllabus(true);
     supabase
       .from("syllabus_nodes")
-      .select("id, parent_id, title, node_type, sort_order")
+      .select("id, parent_id, title, node_type, sort_order, depth")
       .eq("exam_id", examId)
       .order("sort_order", { ascending: true })
       .order("title", { ascending: true })
@@ -155,37 +176,35 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
           list.push(row);
           children.set(row.parent_id, list);
         });
-        const countTopics = (id: string): number =>
+        // Count descendants beneath depth 1 (i.e. actual study items under each L2 group).
+        const countLeaves = (id: string): number =>
           (children.get(id) ?? []).reduce((sum, row) => {
-            if (row.node_type === "topic" || row.node_type === "subtopic") {
-              return sum + 1 + countTopics(row.id);
-            }
-            return sum + countTopics(row.id);
+            const kids = children.get(row.id) ?? [];
+            if (kids.length === 0) return sum + 1;
+            return sum + countLeaves(row.id);
           }, 0);
-        const next = (children.get(null) ?? [])
-          .filter((row) => row.node_type === "subject")
-          .map((subject) => ({
-            id: subject.id,
-            title: subject.title,
-            chapters: (children.get(subject.id) ?? [])
-              .filter((row) => row.node_type === "chapter")
-              .map((chapter) => ({
-                id: chapter.id,
-                title: chapter.title,
-                topicCount: countTopics(chapter.id),
+        const next: L1Option[] = (children.get(null) ?? [])
+          .filter((row) => row.depth === 0)
+          .map((l1) => ({
+            id: l1.id,
+            title: l1.title,
+            children: (children.get(l1.id) ?? [])
+              .filter((row) => row.depth === 1)
+              .map((l2) => ({
+                id: l2.id,
+                title: l2.title,
+                descendantCount: countLeaves(l2.id),
               })),
           }));
         setSyllabus(next);
-        setExpandedSubjects(next.slice(0, 3).map((subject) => subject.id));
-        const allSubjects = next.map((subject) => subject.id);
-        const allChapters = next.flatMap((subject) =>
-          subject.chapters.map((chapter) => chapter.id),
-        );
+        setExpandedSubjects(next.slice(0, 3).map((l1) => l1.id));
+        const allL1 = next.map((l1) => l1.id);
+        const allL2 = next.flatMap((l1) => l1.children.map((c) => c.id));
         const sameExam = editMode && examId === user?.targetExamId;
         const savedSubjects = user?.selectedSubjectIds ?? user?.selectedSubjects ?? [];
         const savedChapters = user?.selectedChapterIds ?? user?.selectedChapters ?? [];
-        setSelectedSubjects(sameExam && savedSubjects.length ? savedSubjects : allSubjects);
-        setSelectedChapters(sameExam && savedChapters.length ? savedChapters : allChapters);
+        setSelectedSubjects(sameExam && savedSubjects.length ? savedSubjects : allL1);
+        setSelectedChapters(sameExam && savedChapters.length ? savedChapters : allL2);
       });
     return () => {
       cancelled = true;
@@ -200,6 +219,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     user?.selectedSubjects,
     user?.selectedChapters,
   ]);
+
 
   const validateUsername = async (val: string): Promise<UsernameState> => {
     const v = val.trim().toLowerCase();
@@ -270,31 +290,32 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     setSelectedChapters([]);
   };
 
-  const toggleSubject = (subject: SubjectOption, checked: boolean) => {
-    const chapterIds = subject.chapters.map((chapter) => chapter.id);
+  const toggleSubject = (l1: L1Option, checked: boolean) => {
+    const l2Ids = l1.children.map((c) => c.id);
     if (checked) {
-      setSelectedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
-      setSelectedChapters((prev) => Array.from(new Set([...prev, ...chapterIds])));
-      setExpandedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
+      setSelectedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
+      setSelectedChapters((prev) => Array.from(new Set([...prev, ...l2Ids])));
+      setExpandedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
     } else {
-      setSelectedSubjects((prev) => prev.filter((id) => id !== subject.id));
-      setSelectedChapters((prev) => prev.filter((id) => !chapterIds.includes(id)));
+      setSelectedSubjects((prev) => prev.filter((id) => id !== l1.id));
+      setSelectedChapters((prev) => prev.filter((id) => !l2Ids.includes(id)));
     }
   };
 
-  const toggleChapter = (subject: SubjectOption, chapterId: string, checked: boolean) => {
+  const toggleChapter = (l1: L1Option, l2Id: string, checked: boolean) => {
     if (checked) {
-      setSelectedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
-      setSelectedChapters((prev) => Array.from(new Set([...prev, chapterId])));
+      setSelectedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
+      setSelectedChapters((prev) => Array.from(new Set([...prev, l2Id])));
       return;
     }
-    const remaining = selectedChapters.filter((id) => id !== chapterId);
-    const subjectChapterIds = subject.chapters.map((chapter) => chapter.id);
+    const remaining = selectedChapters.filter((id) => id !== l2Id);
+    const l1L2Ids = l1.children.map((c) => c.id);
     setSelectedChapters(remaining);
-    if (!remaining.some((id) => subjectChapterIds.includes(id))) {
-      setSelectedSubjects((prev) => prev.filter((id) => id !== subject.id));
+    if (!remaining.some((id) => l1L2Ids.includes(id))) {
+      setSelectedSubjects((prev) => prev.filter((id) => id !== l1.id));
     }
   };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={controlled ? onOpenChange : undefined}>
@@ -477,67 +498,72 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   </p>
                 </div>
               )}
-              {syllabus.map((subject) => {
-                const openSubject = expandedSubjects.includes(subject.id);
-                const chapterIds = subject.chapters.map((chapter) => chapter.id);
-                const checkedChapters = chapterIds.filter((id) =>
-                  selectedChapters.includes(id),
-                ).length;
-                const subjectChecked = selectedSubjects.includes(subject.id) && checkedChapters > 0;
+              {syllabus.map((l1) => {
+                const openL1 = expandedSubjects.includes(l1.id);
+                const l2Ids = l1.children.map((c) => c.id);
+                const checkedL2 = l2Ids.filter((id) => selectedChapters.includes(id)).length;
+                const l1Checked = selectedSubjects.includes(l1.id) && (checkedL2 > 0 || l1.children.length === 0);
                 return (
-                  <div key={subject.id} className="glass rounded-2xl p-3">
+                  <div key={l1.id} className="glass rounded-2xl p-3">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() =>
                           setExpandedSubjects((prev) =>
-                            openSubject
-                              ? prev.filter((id) => id !== subject.id)
-                              : [...prev, subject.id],
+                            openL1
+                              ? prev.filter((id) => id !== l1.id)
+                              : [...prev, l1.id],
                           )
                         }
                         className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/60"
+                        disabled={!hasL2 || l1.children.length === 0}
                       >
                         <ChevronRight
-                          className={cn("h-4 w-4 transition-transform", openSubject && "rotate-90")}
+                          className={cn("h-4 w-4 transition-transform", openL1 && "rotate-90")}
                         />
                       </button>
                       <Checkbox
-                        checked={subjectChecked}
-                        onCheckedChange={(v) => toggleSubject(subject, v === true)}
+                        checked={l1Checked}
+                        onCheckedChange={(v) => toggleSubject(l1, v === true)}
                       />
                       <button
                         type="button"
-                        onClick={() => toggleSubject(subject, !subjectChecked)}
+                        onClick={() => toggleSubject(l1, !l1Checked)}
                         className="flex-1 min-w-0 text-left"
                       >
-                        <div className="text-sm font-semibold truncate">{subject.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {checkedChapters}/{subject.chapters.length} chapters selected
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {l1Label}
                         </div>
+                        <div className="text-sm font-semibold truncate">{l1.title}</div>
+                        {hasL2 && l1.children.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {checkedL2}/{l1.children.length} {l2Label} selected
+                          </div>
+                        )}
                       </button>
                     </div>
-                    {openSubject && (
+                    {openL1 && hasL2 && l1.children.length > 0 && (
                       <div className="mt-3 ml-10 space-y-2">
-                        {subject.chapters.map((chapter) => {
-                          const chapterChecked = selectedChapters.includes(chapter.id);
+                        {l1.children.map((l2) => {
+                          const l2Checked = selectedChapters.includes(l2.id);
                           return (
                             <label
-                              key={chapter.id}
+                              key={l2.id}
                               className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/45 cursor-pointer"
                             >
                               <Checkbox
-                                checked={chapterChecked}
+                                checked={l2Checked}
                                 onCheckedChange={(v) =>
-                                  toggleChapter(subject, chapter.id, v === true)
+                                  toggleChapter(l1, l2.id, v === true)
                                 }
                               />
                               <span className="flex-1 min-w-0 text-sm font-medium truncate">
-                                {chapter.title}
+                                {l2.title}
                               </span>
                               <span className="text-[11px] text-muted-foreground shrink-0">
-                                {chapter.topicCount} topics
+                                {l2.descendantCount} items
                               </span>
+
                             </label>
                           );
                         })}

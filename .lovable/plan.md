@@ -1,71 +1,59 @@
-## Scope
+## Goal
+Support arbitrarily-shaped syllabus hierarchies per exam (RAS: Paper → Unit → Subject → Chapter → Topic → Subtopic; Patwar: Paper → Unit → Subject → Chapter → Topic → Subtopic; future exams: anything else) without hard-coding levels.
 
-Enable Lovable Cloud and rewire the app around real auth + a database-backed syllabus. Add a hidden admin panel where a single admin (anilsanwariya03@gmail.com) uploads exam PDFs, AI parses them into a syllabus tree, admin edits/rearranges, then publishes. On signup, students pick an exam and the published syllabus is copied to their account. Also fix Google sign-in.
+## Core idea: keep the existing generic tree, formalize `node_type` as free-form labels per exam
 
-## 1. Enable Lovable Cloud + AI
+The `syllabus_nodes` table is already a self-referential tree (`parent_id`, `sort_order`, `node_type text`). That structure already supports any depth and any labels — we just need to stop treating `node_type` as a fixed enum of `subject/chapter/topic/subtopic` and start treating it as an exam-defined label.
 
-- Turn on Cloud (Supabase + Auth + Storage) and ensure `LOVABLE_API_KEY` for Lovable AI Gateway.
-- Configure Google social auth via `supabase--configure_social_auth`.
+Two small additions make this robust:
 
-## 2. Database (single migration)
+1. **Per-exam level schema** — each exam declares the ordered list of level labels it uses. RAS = `["paper","unit","subject","chapter","topic","subtopic"]`, Patwar = `["paper","unit","subject","chapter","topic","subtopic"]`, a future exam could be `["section","topic"]`. Stored as `exams.level_schema jsonb` (array of strings).
+2. **Depth on each node** — `syllabus_nodes.depth int` (0 = root child of exam). Combined with `exam.level_schema[depth]`, we always know what a node "is" without hard-coding names. `node_type` stays as the human label (denormalized from schema for convenience and to allow the odd off-schema node).
 
-- `app_role` enum: `admin`, `student`. `user_roles(user_id, role)` + `has_role()` security-definer.
-- `profiles(user_id, username, name, avatar_url, target_exam_id, academic_background, target_year, onboarded, joined_at)` + trigger to auto-create on signup.
-- `exams(id, name, slug, description, is_published)` — admin-managed.
-- `syllabus_nodes(id, exam_id, parent_id, title, type[subject|chapter|topic|subtopic], sort_order)` — admin-authored canonical tree per exam.
-- `user_syllabus_nodes(id, user_id, source_node_id, parent_id, title, type, status, excluded, note, url, revision_count, next_revision_at, due_today)` — per-student copy created at signup from the exam's canonical tree.
-- All tables: GRANTs + RLS. Students read published exams + own rows only; admins full CRUD on exams/syllabus_nodes via `has_role`.
-- Storage bucket `syllabus-pdfs` (private), admin-only RLS.
-- Seed admin: after account creation, insert `user_roles(admin)` row for the given email (via one-time SQL after auth signup, or auto-grant trigger keyed on that specific email).
+Nothing else about the tree changes — parent/child, sort_order, RLS, and the admin AI parser stay as-is.
 
-## 3. Admin account provisioning
+## What changes
 
-- Use `supabaseAdmin.auth.admin.createUser` in a one-shot server function (or migration + edge call) to create the admin auth user with the provided email/password, email pre-confirmed, and grant `admin` role. Password stored in Cloud secret `ADMIN_SEED_PASSWORD` for provisioning only.
+### Database (one migration)
+- `exams`: add `level_schema jsonb not null default '["subject","chapter","topic","subtopic"]'::jsonb`.
+- `syllabus_nodes`: add `depth int not null default 0`. Backfill from existing rows by walking `parent_id`.
+- Keep `node_type` as free text; no enum.
+- No policy changes needed.
 
-## 4. Auth rewire
+### Admin panel (`/admin`)
+- When creating/editing an exam, admin edits the level schema as an ordered chip list ("Paper, Unit, Subject, Chapter, Topic, Subtopic" for RAS; different for Patwar).
+- AI PDF parser (`src/lib/syllabus-ai.functions.ts`): pass the exam's `level_schema` into the system prompt so Gemini emits nodes tagged with the right labels and depth for that exam. Output shape becomes `{ nodes: [{ title, type, depth, children? }] }` where `type` must be one of the schema labels.
+- Tree editor renders labels dynamically from `level_schema[depth]` instead of assuming subject/chapter/topic/subtopic.
 
-- Replace mock `src/lib/auth.tsx` with Supabase-backed context: `onAuthStateChange`, `getUser`, sign in/up/out.
-- `AuthModal`: real email/password signup + login, and Google via `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })` — this fixes the "no Google account chooser" bug (mock currently just calls `signIn` locally).
-- Onboarding step 2 loads published exams from DB; on completion, server fn copies that exam's `syllabus_nodes` into `user_syllabus_nodes` for the user.
-- Move protected app routes (`/syllabus`, `/revisions`, `/progress`, `/profile`) under `src/routes/_authenticated/` using the integration-managed gate. Public `/` shows Landing when signed out, dashboard when signed in.
+### Student onboarding curation (Step 3)
+- Today's step 3 assumes two fixed levels (subjects + chapters). Change it to curate at the **top two levels of the exam's schema** — whatever those happen to be. For RAS the student picks Papers, then Units under each Paper; for Patwar, Paper (only one) then Units; for a flat exam, whatever the top two levels are. `profiles.selected_subject_ids` / `selected_chapter_ids` become generic `selected_l1_ids` / `selected_l2_ids` (rename with a migration, or keep column names and treat them as generic — see Technical details).
 
-## 5. Hidden admin panel
+### Syllabus tree UI (`src/routes/syllabus.tsx`) and store
+- `SyllabusNode.type` becomes `string` (not a union).
+- Node "kind" label shown in the row and drawer reads from `exam.level_schema[node.depth]` rather than a hard-coded set.
+- Font-weight/visual hierarchy currently keyed off `type === "subject"` / `"chapter"` becomes keyed off `depth` (depth 0 = boldest, etc.).
+- Status dots, reset, drawer, exclude — all unchanged; they already work per-node.
 
-Routes (not linked from any public UI):
+### Revision engine, analytics, progress
+- No schema changes needed. "Mastery %", "Subject completion" etc. currently group by the `subject` level. Replace that assumption with "group by depth 0 of this exam's schema" so it works for any exam shape.
 
-- `/admin/login` — email+password form; on success verifies `has_role(admin)`; else signs out and shows error.
-- `/admin` (gated by admin role check in `beforeLoad`) with tabs:
-  - **Exams**: list, create, edit metadata, publish toggle, delete.
-  - **Syllabus editor** (per exam):
-    - Upload PDF → stored in `syllabus-pdfs` bucket → server fn calls Lovable AI (`openai/gpt-5.5`) with the PDF as a `file` content block and a strict JSON schema to return `{subjects:[{title, chapters:[{title, topics:[{title, subtopics:[title]}]}]}]}`.
-    - Tree editor: rename, add, delete, drag-reorder nodes (dnd-kit) with `sort_order`.
-    - "Publish syllabus" writes rows to `syllabus_nodes` (replace-or-diff) and flips `exams.is_published`.
+## Technical details
 
-Admin routes render outside `AppShell` (own minimal glassmorphic shell) so students never see admin nav.
+- **Depth backfill SQL** (single migration): recursive CTE over `syllabus_nodes` computing depth from root, then `UPDATE ... FROM cte`.
+- **Column rename** for `profiles.selected_subject_ids` → `selected_l1_ids` and `selected_chapter_ids` → `selected_l2_ids` is optional. Recommended to avoid the columns lying about their meaning, but requires updating `src/lib/auth.tsx`, `OnboardingModal.tsx`, and `store.tsx`. Cheaper option: leave column names, add a code-level comment. Plan assumes rename.
+- **AI prompt**: inject `Level schema for this exam (in order): ${schema.join(" > ")}` into the system prompt and require `type` ∈ schema and `depth` = index of `type` in schema.
+- **Validation** on admin save: reject any node whose `type` isn't in the exam's schema, or whose depth doesn't match `schema.indexOf(type)`.
+- **Existing RAS data**: after backfill, verify depths look right in `/admin`; the admin can re-run the AI parse against the RAS PDF with the new 6-level schema if the current tree is only 4 levels deep.
 
-## 6. Student signup integration
+## Out of scope for this plan
+- Cross-exam node reuse (sharing "Indian Polity" between RAS and UPSC). Can be added later via a `syllabus_templates` table.
+- Free-form user-added nodes under an exam's tree.
 
-- In signup form, exam selection is loaded from published `exams`.
-- After email verification / first login, `completeOnboarding` server fn:
-  1. Upserts profile with username + exam + background + year.
-  2. Clones the exam's canonical tree into `user_syllabus_nodes` in one transaction.
-- Existing store (`src/lib/store.tsx`) reads/writes `user_syllabus_nodes` via server fns instead of localStorage. Mock syllabus becomes fallback only until data loads.
-
-## 7. Google sign-in fix
-
-Root cause: current `AuthModal.handleGoogle` just calls the local mock `signIn` — no OAuth. Replace with `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`. Enable Google provider in Cloud via `supabase--configure_social_auth`. Users will now get the Google account chooser.
-
-## Technical notes
-
-- Server fns live in `src/lib/*.functions.ts` (client-safe path); admin-only fns verify `has_role(admin)` via `context.supabase` before importing `supabaseAdmin`.
-- PDF parsing: send the uploaded PDF as `{type:"file", file:{filename, file_data:"data:application/pdf;base64,..."}}` to `/v1/chat/completions` with `openai/gpt-5.5` + `response_format: json_schema`.
-- Add `_authenticated` layout (integration-managed) and `_admin` pathless layout with role gate.
-- Keep glassmorphic pastel design system across new admin screens.
-
-## Out of scope (this pass)
-
-- Apple/SSO providers, admin analytics, multi-admin management UI, PDF re-parse diffing, versioned syllabi.
-
-## Deliverables
-
-Cloud enabled, migration applied, admin seeded, `/admin/login` + `/admin` shipped with PDF→AI→edit→publish flow, student signup pulls exams from DB and clones syllabus, Google sign-in works with account chooser.
+## Files touched
+- Migration: `exams.level_schema`, `syllabus_nodes.depth`, optional `profiles` column rename.
+- `src/lib/syllabus-ai.functions.ts` — prompt + output schema.
+- `src/routes/admin.index.tsx` — level-schema editor, dynamic labels.
+- `src/components/OnboardingModal.tsx` — generic L1/L2 curation.
+- `src/lib/store.tsx`, `src/lib/mock-syllabus.ts` (types), `src/routes/syllabus.tsx` — dynamic depth-based rendering.
+- `src/routes/progress.tsx` — group by depth 0 instead of hard-coded "subject".
+- `src/lib/auth.tsx` — if renaming profile columns.

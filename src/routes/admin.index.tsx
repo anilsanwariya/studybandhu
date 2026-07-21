@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Plus, LogOut, Upload, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles } from "lucide-react";
+import { Loader2, Plus, LogOut, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/")({
@@ -17,9 +17,27 @@ export const Route = createFileRoute("/admin/")({
   component: AdminPanel,
 });
 
-interface Exam { id: string; name: string; slug: string; description: string | null; is_published: boolean; }
-interface Node { id: string; parent_id: string | null; title: string; node_type: "subject" | "chapter" | "topic" | "subtopic"; sort_order: number; }
-interface TreeNode extends Node { children: TreeNode[]; }
+interface Exam {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_published: boolean;
+  level_schema: string[];
+}
+interface DbNode {
+  id: string;
+  parent_id: string | null;
+  title: string;
+  node_type: string;
+  sort_order: number;
+  depth: number;
+}
+interface TreeNode extends DbNode {
+  children: TreeNode[];
+}
+
+const DEFAULT_SCHEMA = ["subject", "chapter", "topic", "subtopic"];
 
 function AdminPanel() {
   const nav = useNavigate();
@@ -36,7 +54,10 @@ function AdminPanel() {
 
   const reloadExams = async () => {
     const { data } = await supabase.from("exams").select("*").order("created_at", { ascending: false });
-    setExams((data as Exam[]) ?? []);
+    setExams(((data as any[]) ?? []).map((e) => ({
+      ...e,
+      level_schema: Array.isArray(e.level_schema) ? e.level_schema : DEFAULT_SCHEMA,
+    })));
   };
 
   if (loading || !user?.isAdmin) {
@@ -74,7 +95,7 @@ function AdminPanel() {
                   <span className="font-semibold text-sm truncate">{e.name}</span>
                   {e.is_published ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                 </div>
-                <div className="text-[10px] text-muted-foreground truncate">{e.slug}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{e.level_schema.join(" > ")}</div>
               </button>
             ))}
           </div>
@@ -101,17 +122,23 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
+  const [schemaText, setSchemaText] = useState(DEFAULT_SCHEMA.join(", "));
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!name || !slug) return;
+    const level_schema = schemaText.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (level_schema.length === 0) { toast.error("Provide at least one level"); return; }
     setBusy(true);
-    const { data, error } = await supabase.from("exams").insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description }).select("id").single();
+    const { data, error } = await supabase
+      .from("exams")
+      .insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description, level_schema } as any)
+      .select("id").single();
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Exam created");
     onCreated(data.id);
-    setName(""); setSlug(""); setDescription("");
+    setName(""); setSlug(""); setDescription(""); setSchemaText(DEFAULT_SCHEMA.join(", "));
     onOpenChange(false);
   };
 
@@ -122,6 +149,11 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
         <div className="space-y-3">
           <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => { setName(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-")); }} placeholder="UPSC CSE" className="bg-white/60 border-white/70 rounded-xl" /></div>
           <div className="space-y-1.5"><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="upsc-cse" className="bg-white/60 border-white/70 rounded-xl" /></div>
+          <div className="space-y-1.5">
+            <Label>Hierarchy levels (top → bottom, comma-separated)</Label>
+            <Input value={schemaText} onChange={(e) => setSchemaText(e.target.value)} placeholder="paper, unit, subject, chapter, topic, subtopic" className="bg-white/60 border-white/70 rounded-xl font-mono text-xs" />
+            <p className="text-[11px] text-muted-foreground">e.g. RAS: paper, unit, subject, chapter, topic, subtopic. Patwar: paper, unit, subject, chapter, topic, subtopic. Simple: subject, chapter, topic, subtopic.</p>
+          </div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-white/60 border-white/70 rounded-xl" /></div>
           <Button onClick={submit} disabled={busy || !name || !slug} className="w-full rounded-full">{busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Create</Button>
         </div>
@@ -130,17 +162,57 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
   );
 }
 
+function SchemaEditor({ schema, onChange }: { schema: string[]; onChange: (next: string[]) => void }) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="glass rounded-2xl p-3">
+      <div className="text-xs font-semibold text-muted-foreground mb-2">Hierarchy levels (top → bottom)</div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {schema.map((label, i) => (
+          <span key={`${label}-${i}`} className="inline-flex items-center gap-1 bg-white/70 rounded-full px-2.5 py-1 text-xs font-medium">
+            <span className="text-muted-foreground">L{i}</span>
+            {label}
+            <button className="ml-1 h-4 w-4 rounded-full hover:bg-destructive/20 hover:text-destructive flex items-center justify-center" onClick={() => onChange(schema.filter((_, idx) => idx !== i))} aria-label={`Remove ${label}`}>
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draft.trim()) {
+              onChange([...schema, draft.trim().toLowerCase()]);
+              setDraft("");
+            }
+          }}
+          placeholder="Add level (e.g. paper)"
+          className="h-8 bg-white/60 border-white/70 rounded-lg text-xs"
+        />
+        <Button size="sm" variant="outline" className="rounded-full h-8 bg-white/60" onClick={() => { if (draft.trim()) { onChange([...schema, draft.trim().toLowerCase()]); setDraft(""); } }}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
+  const [schema, setSchema] = useState<string[]>(exam.level_schema);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const parseFn = useServerFn(parseSyllabusPdf);
 
+  useEffect(() => { setSchema(exam.level_schema); }, [exam.id, exam.level_schema]);
+
   const loadTree = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("syllabus_nodes").select("*").eq("exam_id", exam.id).order("sort_order");
-    const rows = (data as Node[]) ?? [];
+    const { data } = await supabase.from("syllabus_nodes").select("id, parent_id, title, node_type, sort_order, depth").eq("exam_id", exam.id).order("sort_order");
+    const rows = (data as DbNode[]) ?? [];
     const byParent = new Map<string | null, TreeNode[]>();
     const nodes: TreeNode[] = rows.map((r) => ({ ...r, children: [] }));
     for (const n of nodes) {
@@ -161,6 +233,12 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     else { toast.success(!exam.is_published ? "Published" : "Unpublished"); onChange(); }
   };
 
+  const saveSchema = async () => {
+    if (schema.length === 0) { toast.error("Schema cannot be empty"); return; }
+    const { error } = await supabase.from("exams").update({ level_schema: schema } as any).eq("id", exam.id);
+    if (error) toast.error(error.message); else { toast.success("Schema updated"); onChange(); }
+  };
+
   const deleteExam = async () => {
     if (!confirm(`Delete "${exam.name}" and all its syllabus?`)) return;
     const { error } = await supabase.from("exams").delete().eq("id", exam.id);
@@ -176,8 +254,8 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
       const base64 = btoa(binary);
-      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}` } });
-      const flat = flattenAi(result.nodes ?? []);
+      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}`, levelSchema: schema } });
+      const flat = flattenAi(result.nodes ?? [], schema, 0);
       setTree(flat);
       toast.success(`Parsed ${countAll(flat)} items. Review and save.`);
     } catch (e: any) {
@@ -190,20 +268,25 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     setSaving(true);
     try {
       await supabase.from("syllabus_nodes").delete().eq("exam_id", exam.id);
-      const rows: Omit<Node, "id">[] = [];
-      const walk = (nodes: TreeNode[], parentId: string | null, ids: Map<TreeNode, string>) => {
+      const rows: any[] = [];
+      const walk = (nodes: TreeNode[], parentId: string | null, depth: number) => {
         nodes.forEach((n, i) => {
           const id = crypto.randomUUID();
-          ids.set(n, id);
-          rows.push({ parent_id: parentId, title: n.title, node_type: n.node_type, sort_order: i } as any);
-          (rows[rows.length - 1] as any).id = id;
-          (rows[rows.length - 1] as any).exam_id = exam.id;
-          walk(n.children, id, ids);
+          rows.push({
+            id,
+            exam_id: exam.id,
+            parent_id: parentId,
+            title: n.title,
+            node_type: schema[depth] ?? n.node_type,
+            sort_order: i,
+            depth,
+          });
+          walk(n.children, id, depth + 1);
         });
       };
-      walk(tree, null, new Map());
+      walk(tree, null, 0);
       if (rows.length > 0) {
-        const { error } = await supabase.from("syllabus_nodes").insert(rows as any);
+        const { error } = await supabase.from("syllabus_nodes").insert(rows);
         if (error) throw error;
       }
       toast.success("Saved");
@@ -225,8 +308,9 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     setTree(clone);
   };
 
-  const addChild = (path: number[] | null, type: TreeNode["node_type"]) => {
-    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${type}`, node_type: type, sort_order: 0, children: [] };
+  const addChild = (path: number[] | null, depth: number) => {
+    const label = schema[depth] ?? `L${depth}`;
+    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, children: [] };
     if (!path) { setTree([...tree, node]); return; }
     updateNodeAt(path, (n) => ({ ...n, children: [...n.children, node] }));
   };
@@ -257,45 +341,54 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         </div>
       </div>
 
+      <div className="mb-5 space-y-2">
+        <SchemaEditor schema={schema} onChange={setSchema} />
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" className="rounded-full bg-white/60" onClick={saveSchema}>Save schema</Button>
+        </div>
+      </div>
+
       {loading ? (
         <div className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
       ) : (
         <>
           <div className="space-y-2">
-            {tree.map((n, i) => <NodeRow key={n.id} node={n} path={[i]} onUpdate={updateNodeAt} onAdd={addChild} />)}
+            {tree.map((n, i) => <NodeRow key={n.id} node={n} path={[i]} schema={schema} onUpdate={updateNodeAt} onAdd={addChild} />)}
           </div>
-          <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, "subject")}>
-            <Plus className="h-3.5 w-3.5" /> Add subject
+          <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, 0)}>
+            <Plus className="h-3.5 w-3.5" /> Add {schema[0] ?? "item"}
           </Button>
-          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill the tree. Review, edit, then Save.</p>
+          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill the tree using this exam's schema. Review, edit, then Save.</p>
         </>
       )}
     </div>
   );
 }
 
-const NEXT: Record<TreeNode["node_type"], TreeNode["node_type"] | null> = { subject: "chapter", chapter: "topic", topic: "subtopic", subtopic: null };
-
-function NodeRow({ node, path, onUpdate, onAdd }: {
+function NodeRow({ node, path, schema, onUpdate, onAdd }: {
   node: TreeNode;
   path: number[];
+  schema: string[];
   onUpdate: (path: number[], mut: (n: TreeNode) => TreeNode | null) => void;
-  onAdd: (path: number[], type: TreeNode["node_type"]) => void;
+  onAdd: (path: number[], depth: number) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const child = NEXT[node.node_type];
-  const indent = (path.length - 1) * 16;
+  const depth = path.length - 1;
+  const childDepth = depth + 1;
+  const canAddChild = childDepth < schema.length;
+  const label = schema[depth] ?? node.node_type;
+  const indent = depth * 16;
   return (
     <div>
       <div className="glass rounded-2xl px-3 py-2 flex items-center gap-2" style={{ marginLeft: indent }}>
         <button onClick={() => setOpen(!open)} className="h-6 w-6 rounded-md hover:bg-white/60 flex items-center justify-center shrink-0">
           {node.children.length > 0 ? (open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />}
         </button>
-        <span className="text-[10px] uppercase text-muted-foreground font-semibold shrink-0 w-16">{node.node_type}</span>
+        <span className="text-[10px] uppercase text-muted-foreground font-semibold shrink-0 w-20 truncate">{label}</span>
         <Input value={node.title} onChange={(e) => onUpdate(path, (n) => ({ ...n, title: e.target.value }))} className="h-8 bg-white/60 border-white/70 rounded-lg text-sm" />
-        {child && (
-          <Button size="sm" variant="ghost" className="rounded-full h-8 gap-1" onClick={() => onAdd(path, child)}>
-            <Plus className="h-3 w-3" /> {child}
+        {canAddChild && (
+          <Button size="sm" variant="ghost" className="rounded-full h-8 gap-1" onClick={() => onAdd(path, childDepth)}>
+            <Plus className="h-3 w-3" /> {schema[childDepth]}
           </Button>
         )}
         <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive" onClick={() => onUpdate(path, () => null)}>
@@ -303,23 +396,23 @@ function NodeRow({ node, path, onUpdate, onAdd }: {
         </Button>
       </div>
       {open && node.children.map((c, i) => (
-        <NodeRow key={c.id} node={c} path={[...path, i]} onUpdate={onUpdate} onAdd={onAdd} />
+        <NodeRow key={c.id} node={c} path={[...path, i]} schema={schema} onUpdate={onUpdate} onAdd={onAdd} />
       ))}
     </div>
   );
 }
 
-function flattenAi(nodes: any[], parentType: TreeNode["node_type"] | null = null, depth = 0): TreeNode[] {
-  const typeByDepth: TreeNode["node_type"][] = ["subject", "chapter", "topic", "subtopic"];
+function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
   return nodes.map((n, i) => {
-    const type = (typeByDepth.includes(n.type) ? n.type : typeByDepth[Math.min(depth, 3)]) as TreeNode["node_type"];
+    const label = schema[depth] ?? String(n.type ?? `L${depth}`);
     return {
       id: crypto.randomUUID(),
       parent_id: null,
       title: String(n.title ?? "Untitled"),
-      node_type: type,
+      node_type: label,
       sort_order: i,
-      children: Array.isArray(n.children) ? flattenAi(n.children, type, depth + 1) : [],
+      depth,
+      children: Array.isArray(n.children) ? flattenAi(n.children, schema, depth + 1) : [],
     };
   });
 }

@@ -19,7 +19,9 @@ interface SyllabusDbRow {
   title: string;
   node_type: string;
   sort_order: number;
+  depth: number;
 }
+
 
 interface StoreState {
   tree: SyllabusNode[];
@@ -114,7 +116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (async () => {
       const { data, error } = await supabase
         .from("syllabus_nodes")
-        .select("id, parent_id, title, node_type, sort_order")
+        .select("id, parent_id, title, node_type, sort_order, depth")
         .eq("exam_id", examId)
         .order("sort_order", { ascending: true })
         .order("title", { ascending: true });
@@ -124,10 +126,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setTree([]);
         return;
       }
-      const selectedSubjects = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
-      const selectedChapters = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
-      const hasSubjectSelection = selectedSubjects.size > 0;
-      const hasChapterSelection = selectedChapters.size > 0;
+      // Curation is at the top two levels of whatever schema the exam defines:
+      // depth 0 (L1) uses selected_subject_ids, depth 1 (L2) uses selected_chapter_ids.
+      const selectedL1 = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
+      const selectedL2 = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
+      const hasL1 = selectedL1.size > 0;
+      const hasL2 = selectedL2.size > 0;
       const byParent = new Map<string | null, SyllabusDbRow[]>();
       for (const row of data as SyllabusDbRow[]) {
         const arr = byParent.get(row.parent_id) ?? [];
@@ -137,17 +141,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const build = (parentId: string | null): SyllabusNode[] => {
         const rows = byParent.get(parentId) ?? [];
         return rows.flatMap((r) => {
-          if (r.node_type === "subject" && hasSubjectSelection && !selectedSubjects.has(r.id)) {
-            return [];
-          }
-          if (r.node_type === "chapter" && hasChapterSelection && !selectedChapters.has(r.id)) {
-            return [];
-          }
+          if (r.depth === 0 && hasL1 && !selectedL1.has(r.id)) return [];
+          if (r.depth === 1 && hasL2 && !selectedL2.has(r.id)) return [];
           return [
             {
               id: r.id,
               title: r.title,
-              type: r.node_type as SyllabusNode["type"],
+              type: r.node_type,
+              depth: r.depth,
               status: "unread" as Status,
               dueToday: false,
               revisionCount: 0,
@@ -179,13 +180,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const awardCounter = useRef(0);
   const dailyLimit = 7;
 
+  // Trackable items are the leaves of the tree (whatever the exam's deepest level is called).
   const flatTopics = useMemo(() => {
     const list: SyllabusNode[] = [];
     walk(tree, (n) => {
-      if ((n.type === "topic" || n.type === "subtopic") && !n.excluded) list.push(n);
+      const isLeaf = !n.children || n.children.length === 0;
+      if (isLeaf && !n.excluded) list.push(n);
     });
     return list;
   }, [tree]);
+
 
   const newTargets = flatTopics.filter((n) => n.status === "unread");
   const dueToday = flatTopics.filter((n) => n.dueToday && n.status !== "unread");
