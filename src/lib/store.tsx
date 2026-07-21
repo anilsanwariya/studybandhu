@@ -102,6 +102,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
+  const [levelSchema, setLevelSchema] = useState<string[]>([]);
 
   // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
