@@ -196,35 +196,57 @@ function ProgressPage() {
           <span className="glass rounded-full text-xs font-medium px-3 py-1">{flatTopics.length} topics</span>
         </div>
 
-        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
-          <table className="w-full text-sm min-w-[560px]">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Topic</th>
-                <th className="py-2 pr-4 font-medium">Mastery</th>
-                <th className="py-2 pr-4 font-medium text-right whitespace-nowrap">Revisions</th>
-                <th className="py-2 pr-4 font-medium text-right whitespace-nowrap">Next due</th>
-              </tr>
-            </thead>
-            <tbody>
-              {flatTopics.map((t) => {
-                const b = masteryBadge(t.status, t.revisionCount ?? 0);
-                return (
-                  <tr key={t.id} className="border-t border-white/40">
-                    <td className="py-2.5 pr-4 font-medium max-w-[220px] truncate">{t.title}</td>
-                    <td className="py-2.5 pr-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.cls}`}>{b.label}</span>
-                    </td>
-                    <td className="py-2.5 pr-4 tabular-nums text-right whitespace-nowrap">{t.revisionCount ?? 0}×</td>
-                    <td className="py-2.5 pr-4 text-right text-muted-foreground whitespace-nowrap">{nextDueLabel(t.nextRevisionAt)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <div className="space-y-1 min-w-[320px]">
+            {tree.map((n) => (
+              <MasteryTreeNode key={n.id} node={n} depth={0} />
+            ))}
+          </div>
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function MasteryTreeNode({ node, depth }: { node: SyllabusNode; depth: number }) {
+  const [open, setOpen] = useState(depth < 1);
+  const hasChildren = !!node.children && node.children.length > 0;
+  const isLeaf = !hasChildren;
+  const b = isLeaf ? masteryBadge(node.status, node.revisionCount ?? 0) : null;
+  return (
+    <div>
+      <div
+        className="flex items-start gap-2 rounded-2xl px-2 py-2 hover:bg-white/40 min-w-0"
+        style={{ paddingLeft: `${depth * 14 + 6}px` }}
+      >
+        {hasChildren ? (
+          <button onClick={() => setOpen((o) => !o)} className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-white/60 shrink-0 mt-0.5">
+            <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
+          </button>
+        ) : (
+          <span className="h-6 w-6 shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className={cn("text-sm break-words", depth === 0 && "font-semibold", depth === 1 && "font-medium")}>
+            {node.title}
+          </div>
+          {isLeaf && (
+            <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
+              {b && <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${b.cls}`}>{b.label}</span>}
+              <span>Revisions: <span className="tabular-nums text-foreground/80 font-medium">{node.revisionCount ?? 0}×</span></span>
+              <span>Next due: <span className="text-foreground/80 font-medium">{nextDueLabel(node.nextRevisionAt)}</span></span>
+            </div>
+          )}
+        </div>
+      </div>
+      {hasChildren && open && (
+        <div className="space-y-1 mt-1">
+          {node.children!.map((c) => (
+            <MasteryTreeNode key={c.id} node={c} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
