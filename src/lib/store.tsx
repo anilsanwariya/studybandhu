@@ -130,8 +130,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [user?.id, user?.targetExamId, user?.selectedSubjectIds, user?.selectedChapterIds, user?.selectedSubjects, user?.selectedChapters]);
 
   const [bucket, setBucket] = useState<string[]>([]);
-  const [streak] = useState(7);
-  const [xp, setXp] = useState(1240);
+  const [streak] = useState(0);
+  const [xp, setXp] = useState(0);
   const [lastAward, setLastAward] = useState<XpAward | null>(null);
   const awardCounter = useRef(0);
   const dailyLimit = 7;
