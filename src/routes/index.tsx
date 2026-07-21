@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { StatusDot } from "@/components/StatusDot";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
+import { Landing } from "@/components/Landing";
 import { quotes } from "@/lib/mock-syllabus";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -12,14 +14,20 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Morning Intent — Cadence" },
-      { name: "description", content: "Set your daily study intent with a forgiving, glassmorphic syllabus tracker for competitive exam aspirants." },
-      { property: "og:title", content: "Morning Intent — Cadence" },
-      { property: "og:description", content: "A calming spaced-repetition companion for exam prep." },
+      { title: "StudyBandhu — Forgiving Study Tracker for Exam Aspirants" },
+      { name: "description", content: "A calming, forgiving syllabus tracker and spaced-repetition companion for competitive exam aspirants (RAS, UPSC, SSC, and more)." },
+      { property: "og:title", content: "StudyBandhu — Forgiving Study Tracker" },
+      { property: "og:description", content: "AI syllabus parser, forgiving revision engine, morning intent planner, and study squads for exam prep." },
     ],
   }),
-  component: MorningIntent,
+  component: HomeRoute,
 });
+
+function HomeRoute() {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Landing />;
+  return <MorningIntent />;
+}
 
 function MorningIntent() {
   const { newTargets, dueToday, bucketNodes, bucket, dailyLimit, addToBucket, removeFromBucket } = useStore();

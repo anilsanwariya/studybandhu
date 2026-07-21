@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SyllabusRouteImport } from './routes/syllabus'
 import { Route as RevisionsRouteImport } from './routes/revisions'
 import { Route as ProgressRouteImport } from './routes/progress'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SyllabusRoute = SyllabusRouteImport.update({
@@ -29,6 +30,11 @@ const ProgressRoute = ProgressRouteImport.update({
   path: '/progress',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,12 +43,14 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/profile': typeof ProfileRoute
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/progress' | '/revisions' | '/syllabus'
+  fullPaths: '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/progress' | '/revisions' | '/syllabus'
-  id: '__root__' | '/' | '/progress' | '/revisions' | '/syllabus'
+  to: '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
+  id: '__root__' | '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProfileRoute: typeof ProfileRoute
   ProgressRoute: typeof ProgressRoute
   RevisionsRoute: typeof RevisionsRoute
   SyllabusRoute: typeof SyllabusRoute
@@ -92,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProgressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProfileRoute: ProfileRoute,
   ProgressRoute: ProgressRoute,
   RevisionsRoute: RevisionsRoute,
   SyllabusRoute: SyllabusRoute,
