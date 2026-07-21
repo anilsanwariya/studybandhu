@@ -77,7 +77,20 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [expandedSubjects, setExpandedSubjects] = useState<string[]>([]);
+  const [academicBackground, setAcademicBackground] = useState<string>("");
+  const [targetYear, setTargetYear] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
+  const backgroundOptions = [
+    "12th Pass",
+    "Undergraduate",
+    "Graduate",
+    "Postgraduate",
+    "Working Professional",
+    "Other",
+  ];
 
   useEffect(() => {
     if (!isOpen) return;
