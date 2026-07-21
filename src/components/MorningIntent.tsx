@@ -36,23 +36,38 @@ function countLeaves(nodes: SyllabusNode[]): number {
   return c;
 }
 
-/** Prune tree to only the branch(es) matching the selected Paper, Unit, and Subject. */
+/** Prune tree based on Paper/Unit, OR extract the Subject entirely to strip upper tree. */
 function scopeTree(nodes: SyllabusNode[], paperId: string, unitId: string, subjectId: string): SyllabusNode[] {
-  if (paperId === "all" && unitId === "all" && subjectId === "all") return nodes;
+  // If a specific subject is selected, extract ONLY that subject and make it the root.
+  // This strips away the parent Paper and Unit nodes.
+  if (subjectId !== "all") {
+    let foundSubject: SyllabusNode | null = null;
+    const findNode = (list: SyllabusNode[]) => {
+      for (const n of list) {
+        if (n.id === subjectId) {
+          foundSubject = n;
+          return;
+        }
+        if (n.children) findNode(n.children);
+      }
+    };
+    findNode(nodes);
+    return foundSubject ? [foundSubject] : [];
+  }
+
+  // Otherwise, handle standard Paper and Unit filtering
+  if (paperId === "all" && unitId === "all") return nodes;
+
   const walk = (list: SyllabusNode[]): SyllabusNode[] => {
     const out: SyllabusNode[] = [];
     for (const n of list) {
-      // Filter out non-matching nodes at their respective depths
       if (paperId !== "all" && n.depth === 0 && n.id !== paperId) continue;
       if (unitId !== "all" && n.depth === 1 && n.id !== unitId) continue;
-      if (subjectId !== "all" && n.depth === 2 && n.id !== subjectId) continue;
 
       const kids = n.children ? walk(n.children) : undefined;
 
-      // Determine if we are filtering at a level deeper than the current node
       let filteringDeeper = false;
       if (unitId !== "all" && n.depth < 1) filteringDeeper = true;
-      if (subjectId !== "all" && n.depth < 2) filteringDeeper = true;
 
       // If we are searching deeper, and this branch has no matching children, prune it.
       if (filteringDeeper && (!kids || kids.length === 0)) {
@@ -71,7 +86,6 @@ export function MorningIntent() {
   const quote = useMemo(() => quotes[new Date().getDate() % quotes.length], []);
   const [tab, setTab] = useState("new");
 
-  // Updated State for Paper > Unit > Subject
   const [paperFilter, setPaperFilter] = useState("all");
   const [unitFilter, setUnitFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
@@ -170,7 +184,7 @@ export function MorningIntent() {
           </SelectContent>
         </Select>
 
-        {(paperFilter !== "all" || unitFilter !== "all" || subjectFilter !== "all") && (
+        {(paperFilter !== "all" || unitFilter !== "all") && (
           <Button
             size="sm"
             variant="ghost"
@@ -184,32 +198,6 @@ export function MorningIntent() {
             Clear
           </Button>
         )}
-      </div>
-
-      {/* Swipeable Subject Tabs */}
-      <div className="mb-5 flex overflow-x-auto gap-2 pb-2 snap-x hide-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <button
-          onClick={() => setSubjectFilter("all")}
-          className={cn(
-            "snap-start shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors",
-            subjectFilter === "all" ? "bg-primary text-primary-foreground shadow-md" : "glass hover:bg-white/60",
-          )}
-        >
-          All Subjects
-        </button>
-
-        {subjects.map((subject) => (
-          <button
-            key={subject.id}
-            onClick={() => setSubjectFilter(subject.id)}
-            className={cn(
-              "snap-start shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors",
-              subjectFilter === subject.id ? "bg-primary text-primary-foreground shadow-md" : "glass hover:bg-white/60",
-            )}
-          >
-            {subject.title}
-          </button>
-        ))}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 lg:gap-6">
@@ -240,10 +228,38 @@ export function MorningIntent() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="new" className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
+            {/* Swipeable Subject Tabs Inside The Bank */}
+            <div className="mt-4 mb-1 flex overflow-x-auto gap-2 pb-2 snap-x hide-scrollbar [-ms-overflow-style:none] [scrollbar-width:none]">
+              <button
+                onClick={() => setSubjectFilter("all")}
+                className={cn(
+                  "snap-start shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors",
+                  subjectFilter === "all" ? "bg-primary text-primary-foreground shadow-md" : "glass hover:bg-white/60",
+                )}
+              >
+                All Subjects
+              </button>
+
+              {subjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  onClick={() => setSubjectFilter(subject.id)}
+                  className={cn(
+                    "snap-start shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors",
+                    subjectFilter === subject.id
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "glass hover:bg-white/60",
+                  )}
+                >
+                  {subject.title}
+                </button>
+              ))}
+            </div>
+
+            <TabsContent value="new" className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
               <BankTree nodes={newTree} bucket={bucket} onAdd={addToBucket} onRemove={removeFromBucket} full={full} />
             </TabsContent>
-            <TabsContent value="due" className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
+            <TabsContent value="due" className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
               <BankTree nodes={dueTree} bucket={bucket} onAdd={addToBucket} onRemove={removeFromBucket} full={full} />
             </TabsContent>
           </Tabs>
