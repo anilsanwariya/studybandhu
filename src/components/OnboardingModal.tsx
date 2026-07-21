@@ -290,31 +290,32 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     setSelectedChapters([]);
   };
 
-  const toggleSubject = (subject: SubjectOption, checked: boolean) => {
-    const chapterIds = subject.chapters.map((chapter) => chapter.id);
+  const toggleSubject = (l1: L1Option, checked: boolean) => {
+    const l2Ids = l1.children.map((c) => c.id);
     if (checked) {
-      setSelectedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
-      setSelectedChapters((prev) => Array.from(new Set([...prev, ...chapterIds])));
-      setExpandedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
+      setSelectedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
+      setSelectedChapters((prev) => Array.from(new Set([...prev, ...l2Ids])));
+      setExpandedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
     } else {
-      setSelectedSubjects((prev) => prev.filter((id) => id !== subject.id));
-      setSelectedChapters((prev) => prev.filter((id) => !chapterIds.includes(id)));
+      setSelectedSubjects((prev) => prev.filter((id) => id !== l1.id));
+      setSelectedChapters((prev) => prev.filter((id) => !l2Ids.includes(id)));
     }
   };
 
-  const toggleChapter = (subject: SubjectOption, chapterId: string, checked: boolean) => {
+  const toggleChapter = (l1: L1Option, l2Id: string, checked: boolean) => {
     if (checked) {
-      setSelectedSubjects((prev) => Array.from(new Set([...prev, subject.id])));
-      setSelectedChapters((prev) => Array.from(new Set([...prev, chapterId])));
+      setSelectedSubjects((prev) => Array.from(new Set([...prev, l1.id])));
+      setSelectedChapters((prev) => Array.from(new Set([...prev, l2Id])));
       return;
     }
-    const remaining = selectedChapters.filter((id) => id !== chapterId);
-    const subjectChapterIds = subject.chapters.map((chapter) => chapter.id);
+    const remaining = selectedChapters.filter((id) => id !== l2Id);
+    const l1L2Ids = l1.children.map((c) => c.id);
     setSelectedChapters(remaining);
-    if (!remaining.some((id) => subjectChapterIds.includes(id))) {
-      setSelectedSubjects((prev) => prev.filter((id) => id !== subject.id));
+    if (!remaining.some((id) => l1L2Ids.includes(id))) {
+      setSelectedSubjects((prev) => prev.filter((id) => id !== l1.id));
     }
   };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={controlled ? onOpenChange : undefined}>
