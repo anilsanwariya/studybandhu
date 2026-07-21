@@ -194,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     updateUser: async (patch) => {
       if (!user) return;
-      const dbPatch: ProfileUpdate = {};
+      const dbPatch: ProfileInsert = { user_id: user.id };
       if (patch.username !== undefined) dbPatch.username = patch.username;
       if (patch.targetExamId !== undefined) dbPatch.target_exam_id = patch.targetExamId;
       if (patch.selectedSubjects !== undefined) {
@@ -214,8 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         dbPatch.academic_background = patch.academicBackground;
       }
       if (patch.targetYear !== undefined) dbPatch.target_year = patch.targetYear;
-      if (Object.keys(dbPatch).length) {
-        dbPatch.user_id = user.id;
+      if (Object.keys(dbPatch).length > 1) {
         dbPatch.updated_at = new Date().toISOString();
         const { error } = await supabase
           .from("profiles")
