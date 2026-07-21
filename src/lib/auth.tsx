@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     session,
     loading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!session,
     isAdmin: !!user?.isAdmin,
     needsOnboarding: !!user && !user.onboarded && !user.isAdmin,
     signInWithPassword: async (email, password) => {
