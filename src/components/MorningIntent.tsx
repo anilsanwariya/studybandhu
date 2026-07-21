@@ -13,14 +13,17 @@ import { cn } from "@/lib/utils";
 
 type LeafPredicate = (n: SyllabusNode) => boolean;
 
+function isTopicLeaf(n: SyllabusNode) {
+  return n.depth === 2;
+}
+
 function filterTree(nodes: SyllabusNode[], keep: LeafPredicate): SyllabusNode[] {
   const out: SyllabusNode[] = [];
   for (const n of nodes) {
-    const isLeaf = !n.children || n.children.length === 0;
-    if (isLeaf) {
-      if (keep(n) && !n.excluded) out.push(n);
-    } else {
-      const kids = filterTree(n.children!, keep);
+    if (isTopicLeaf(n)) {
+      if (keep(n) && !n.excluded) out.push({ ...n, children: undefined });
+    } else if (n.children && n.children.length > 0) {
+      const kids = filterTree(n.children, keep);
       if (kids.length > 0) out.push({ ...n, children: kids });
     }
   }
@@ -30,8 +33,8 @@ function filterTree(nodes: SyllabusNode[], keep: LeafPredicate): SyllabusNode[] 
 function countLeaves(nodes: SyllabusNode[]): number {
   let c = 0;
   for (const n of nodes) {
-    if (!n.children || n.children.length === 0) c += 1;
-    else c += countLeaves(n.children);
+    if (isTopicLeaf(n)) c += 1;
+    else if (n.children) c += countLeaves(n.children);
   }
   return c;
 }
