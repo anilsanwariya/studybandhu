@@ -8,7 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { SyllabusNode, Status } from "./mock-syllabus";
+import type { SyllabusNode, Status, NodeType } from "./mock-syllabus";
+import { LEVEL_SCHEMA } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
@@ -21,7 +22,15 @@ interface SyllabusDbRow {
   sort_order: number;
   depth: number;
 }
-
+interface UserOverrideRow {
+  id: string;
+  parent_id: string;
+  parent_kind: "admin" | "user";
+  title: string;
+  node_type: "chapter" | "topic" | "subtopic";
+  depth: number;
+  sort_order: number;
+}
 
 interface StoreState {
   tree: SyllabusNode[];
@@ -56,8 +65,11 @@ interface StoreCtx extends StoreState {
   resetNode: (id: string) => void;
   rateTopic: (id: string, rating: "hard" | "medium" | "easy" | "push") => void;
   scheduleRevision: (id: string, days: number) => void;
+  setSubtopicChecked: (topicId: string, subtopicId: string, checked: boolean) => void;
+  clearSubtopicChecks: (topicId: string) => void;
   awardXp: (amount: number, reason: string) => void;
   findNode: (id: string) => SyllabusNode | undefined;
+  refreshUserOverrides: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreCtx | null>(null);
@@ -87,6 +99,7 @@ function resetSubtree(node: SyllabusNode): SyllabusNode {
     dueToday: false,
     revisionCount: 0,
     nextRevisionAt: null,
+    subtopicChecks: {},
   };
   if (node.children) next.children = node.children.map(resetSubtree);
   return next;
@@ -106,6 +119,7 @@ interface PersistedNode {
   excluded?: boolean;
   url?: string;
   note?: string;
+  subtopicChecks?: Record<string, boolean>;
 }
 interface PersistedState {
   nodes: Record<string, PersistedNode>;
@@ -128,13 +142,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
-  const [levelSchema, setLevelSchema] = useState<string[]>([]);
   const [bucket, setBucket] = useState<string[]>([]);
   const [streak] = useState(0);
   const [xp, setXp] = useState(0);
   const persistLoaded = useRef(false);
+  const reloadTick = useRef(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Load syllabus tree from DB when user has a target exam.
   useEffect(() => {
     const examId = user?.targetExamId;
     persistLoaded.current = false;
@@ -147,63 +161,118 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setSyllabusLoading(true);
     (async () => {
-      const [examRes, nodesRes] = await Promise.all([
-        supabase.from("exams").select("level_schema").eq("id", examId).maybeSingle(),
+      const [adminRes, userRes, hiddenRes] = await Promise.all([
         supabase
           .from("syllabus_nodes")
           .select("id, parent_id, title, node_type, sort_order, depth")
           .eq("exam_id", examId)
           .order("sort_order", { ascending: true })
           .order("title", { ascending: true }),
+        supabase
+          .from("user_syllabus_nodes")
+          .select("id, parent_id, parent_kind, title, node_type, depth, sort_order")
+          .eq("exam_id", examId)
+          .order("sort_order", { ascending: true })
+          .order("title", { ascending: true }),
+        supabase.from("user_node_hidden").select("node_id"),
       ]);
       if (cancelled) return;
       setSyllabusLoading(false);
-      const schema = Array.isArray(examRes.data?.level_schema)
-        ? (examRes.data!.level_schema as string[])
-        : ["subject", "chapter", "topic", "subtopic"];
-      setLevelSchema(schema);
-      const { data, error } = nodesRes;
-      if (error || !data || data.length === 0) {
-        setTree([]);
-        return;
-      }
+
+      const adminRows = (adminRes.data as SyllabusDbRow[] | null) ?? [];
+      const userRows = (userRes.data as UserOverrideRow[] | null) ?? [];
+      const hiddenSet = new Set(((hiddenRes.data as Array<{ node_id: string }> | null) ?? []).map((r) => r.node_id));
+
       const selectedL1 = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
       const selectedL2 = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
       const hasL1 = selectedL1.size > 0;
       const hasL2 = selectedL2.size > 0;
-      const byParent = new Map<string | null, SyllabusDbRow[]>();
-      for (const row of data as SyllabusDbRow[]) {
-        const arr = byParent.get(row.parent_id) ?? [];
-        arr.push(row);
-        byParent.set(row.parent_id, arr);
+
+      // Admin children grouped by parent id.
+      const adminByParent = new Map<string | null, SyllabusDbRow[]>();
+      for (const r of adminRows) {
+        const arr = adminByParent.get(r.parent_id) ?? [];
+        arr.push(r);
+        adminByParent.set(r.parent_id, arr);
       }
+      // User children grouped by (parentKind, parentId).
+      const userByParent = new Map<string, UserOverrideRow[]>();
+      const parentKey = (kind: "admin" | "user", id: string) => `${kind}:${id}`;
+      for (const r of userRows) {
+        const k = parentKey(r.parent_kind, r.parent_id);
+        const arr = userByParent.get(k) ?? [];
+        arr.push(r);
+        userByParent.set(k, arr);
+      }
+
       const persisted = loadPersisted(user.id, examId);
       const nodeMap = persisted?.nodes ?? {};
-      const build = (parentId: string | null): SyllabusNode[] => {
-        const rows = byParent.get(parentId) ?? [];
-        return rows.flatMap((r) => {
-          if (r.depth === 0 && hasL1 && !selectedL1.has(r.id)) return [];
-          if (r.depth === 1 && hasL2 && !selectedL2.has(r.id)) return [];
-          const saved = nodeMap[r.id];
-          return [
-            {
-              id: r.id,
-              title: r.title,
-              type: r.node_type,
-              depth: r.depth,
-              status: (saved?.status ?? "unread") as Status,
-              dueToday: saved?.dueToday ?? false,
-              revisionCount: saved?.revisionCount ?? 0,
-              nextRevisionAt: saved?.nextRevisionAt ?? null,
-              excluded: saved?.excluded,
-              url: saved?.url,
-              note: saved?.note,
-              children: build(r.id),
-            },
-          ];
+
+      const applyPersist = (n: SyllabusNode): SyllabusNode => {
+        const saved = nodeMap[n.id];
+        if (!saved) return n;
+        return {
+          ...n,
+          status: (saved.status ?? "unread") as Status,
+          dueToday: saved.dueToday ?? false,
+          revisionCount: saved.revisionCount ?? 0,
+          nextRevisionAt: saved.nextRevisionAt ?? null,
+          excluded: saved.excluded,
+          url: saved.url,
+          note: saved.note,
+          subtopicChecks: saved.subtopicChecks ?? {},
+        };
+      };
+
+      const buildUserChildren = (parentK: "admin" | "user", parentId: string): SyllabusNode[] => {
+        const rows = userByParent.get(parentKey(parentK, parentId)) ?? [];
+        return rows.map((r) => {
+          const node: SyllabusNode = {
+            id: r.id,
+            title: r.title,
+            type: r.node_type,
+            depth: r.depth,
+            kind: "user",
+            parentKind: r.parent_kind,
+            parentId: r.parent_id,
+            status: "unread",
+            dueToday: false,
+            revisionCount: 0,
+            nextRevisionAt: null,
+            children: buildUserChildren("user", r.id),
+          };
+          return applyPersist(node);
         });
       };
-      setTree(build(null));
+
+      const buildAdmin = (parentId: string | null): SyllabusNode[] => {
+        const rows = adminByParent.get(parentId) ?? [];
+        return rows.flatMap((r) => {
+          // Onboarding filter: only apply subject/chapter picks to admin nodes.
+          if (r.depth === 0 && hasL1 && !selectedL1.has(r.id)) return [];
+          if (r.depth === 1 && hasL2 && !selectedL2.has(r.id)) return [];
+          const adminKids = buildAdmin(r.id);
+          const userKids = buildUserChildren("admin", r.id);
+          const node: SyllabusNode = {
+            id: r.id,
+            title: r.title,
+            type: r.node_type,
+            depth: r.depth,
+            kind: "admin",
+            parentKind: null,
+            parentId: r.parent_id,
+            hidden: hiddenSet.has(r.id),
+            status: "unread",
+            dueToday: false,
+            revisionCount: 0,
+            nextRevisionAt: null,
+            children: [...adminKids, ...userKids],
+          };
+          return [applyPersist(node)];
+        });
+      };
+
+      setTree(buildAdmin(null));
       if (persisted) {
         setBucket(persisted.bucket ?? []);
         setXp(persisted.xp ?? 0);
@@ -224,14 +293,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     user?.selectedChapterIds,
     user?.selectedSubjects,
     user?.selectedChapters,
+    reloadKey,
   ]);
 
+  const refreshUserOverrides = useCallback(async () => {
+    reloadTick.current += 1;
+    setReloadKey(reloadTick.current);
+  }, []);
 
   const [lastAward, setLastAward] = useState<XpAward | null>(null);
   const awardCounter = useRef(0);
   const dailyLimit = 7;
 
-  // Persist progress + bucket to localStorage on any change (after hydration).
   useEffect(() => {
     if (!persistLoaded.current) return;
     const examId = user?.targetExamId;
@@ -246,6 +319,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         excluded: n.excluded,
         url: n.url,
         note: n.note,
+        subtopicChecks: n.subtopicChecks,
       };
     });
     try {
@@ -258,16 +332,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [tree, bucket, xp, user]);
 
-  // Trackable items are the leaves of the tree (whatever the exam's deepest level is called).
+  // Topics are the unit of study. Depth 2 (or leaves at shallower depth if the tree is truncated).
   const flatTopics = useMemo(() => {
     const list: SyllabusNode[] = [];
     walk(tree, (n) => {
-      const isLeaf = !n.children || n.children.length === 0;
-      if (isLeaf && !n.excluded) list.push(n);
+      if (n.hidden) return;
+      const isTopic = n.type === "topic" || n.depth === 2;
+      const isLeaf = !n.children || n.children.filter((c) => !c.hidden).length === 0;
+      if ((isTopic || isLeaf) && !n.excluded && n.depth <= 2) {
+        // Only include depth<=2 leaves; depth 3 subtopics never become independent bucket items.
+        if (n.depth === 3) return;
+        list.push(n);
+      }
     });
-    return list;
+    // Deduplicate (a topic with subtopics won't be leaf, that's fine).
+    const seen = new Set<string>();
+    return list.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
   }, [tree]);
-
 
   const newTargets = flatTopics.filter((n) => n.status === "unread");
   const dueToday = flatTopics.filter((n) => n.dueToday && n.status !== "unread");
@@ -387,10 +468,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [awardXp],
   );
 
+  const setSubtopicChecked = useCallback(
+    (topicId: string, subtopicId: string, checked: boolean) => {
+      setTree((t) =>
+        mapTree(t, (n) => {
+          if (n.id !== topicId) return n;
+          const prev = n.subtopicChecks ?? {};
+          const next = { ...prev, [subtopicId]: checked };
+          if (!checked) delete next[subtopicId];
+          return { ...n, subtopicChecks: next };
+        }),
+      );
+    },
+    [],
+  );
+
+  const clearSubtopicChecks = useCallback((topicId: string) => {
+    setTree((t) => mapTree(t, (n) => (n.id === topicId ? { ...n, subtopicChecks: {} } : n)));
+  }, []);
+
   const value: StoreCtx = {
     tree,
     syllabusLoading,
-    levelSchema,
+    levelSchema: LEVEL_SCHEMA as unknown as string[],
     bucket,
     dailyLimit,
     streak,
@@ -407,8 +507,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     resetNode,
     rateTopic,
     scheduleRevision,
+    setSubtopicChecked,
+    clearSubtopicChecks,
     awardXp,
     findNode,
+    refreshUserOverrides,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -426,3 +529,6 @@ export const statusMeta: Record<Status, { label: string; dot: string; text: stri
   "needs-revision": { label: "Needs Revision", dot: "bg-peach", text: "text-foreground" },
   mastered: { label: "Mastered", dot: "bg-mint", text: "text-foreground" },
 };
+
+// Re-export for consumers.
+export type { NodeType } from "./mock-syllabus";
