@@ -14,6 +14,8 @@ export interface AuthUser {
   targetYear?: string;
   selectedSubjects?: string[];
   selectedChapters?: string[];
+  selectedSubjectIds?: string[];
+  selectedChapterIds?: string[];
   joinedAt: string;
   onboarded: boolean;
   isAdmin: boolean;
@@ -39,10 +41,17 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 async function loadProfile(u: User): Promise<AuthUser> {
   const [profileRes, roleRes] = await Promise.all([
-    supabase.from("profiles").select("*, exams:target_exam_id(id, name)").eq("user_id", u.id).maybeSingle(),
+    supabase.from("profiles").select("*").eq("user_id", u.id).maybeSingle(),
     supabase.from("user_roles").select("role").eq("user_id", u.id),
   ]);
+  if (profileRes.error) throw profileRes.error;
+  if (roleRes.error) throw roleRes.error;
   const p: any = profileRes.data ?? {};
+  let targetExam: string | undefined;
+  if (p.target_exam_id) {
+    const { data: exam } = await supabase.from("exams").select("name").eq("id", p.target_exam_id).maybeSingle();
+    targetExam = exam?.name;
+  }
   const isAdmin = (roleRes.data ?? []).some((r: any) => r.role === "admin");
   const meta: any = u.user_metadata ?? {};
   return {
@@ -52,11 +61,13 @@ async function loadProfile(u: User): Promise<AuthUser> {
     avatarUrl: p.avatar_url ?? meta.avatar_url,
     username: p.username ?? undefined,
     targetExamId: p.target_exam_id ?? undefined,
-    targetExam: p.exams?.name ?? undefined,
+    targetExam,
     academicBackground: p.academic_background ?? undefined,
     targetYear: p.target_year ?? undefined,
-    selectedSubjects: [],
-    selectedChapters: [],
+    selectedSubjects: p.selected_subject_ids ?? [],
+    selectedChapters: p.selected_chapter_ids ?? [],
+    selectedSubjectIds: p.selected_subject_ids ?? [],
+    selectedChapterIds: p.selected_chapter_ids ?? [],
     joinedAt: p.created_at ?? u.created_at ?? new Date().toISOString(),
     onboarded: !!p.onboarded,
     isAdmin,
@@ -126,12 +137,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     completeOnboarding: async (data) => {
       if (!user) return;
-      await supabase.from("profiles").update({
+      const { error } = await supabase.from("profiles").update({
         username: data.username,
         target_exam_id: data.targetExamId ?? null,
+        selected_subject_ids: data.selectedSubjects,
+        selected_chapter_ids: data.selectedChapters,
         onboarded: true,
         updated_at: new Date().toISOString(),
       }).eq("user_id", user.id);
+      if (error) throw error;
       await refresh();
     },
     updateUser: async (patch) => {
@@ -139,12 +153,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const dbPatch: any = {};
       if (patch.username !== undefined) dbPatch.username = patch.username;
       if (patch.targetExamId !== undefined) dbPatch.target_exam_id = patch.targetExamId;
+      if (patch.selectedSubjects !== undefined) dbPatch.selected_subject_ids = patch.selectedSubjects;
+      if (patch.selectedChapters !== undefined) dbPatch.selected_chapter_ids = patch.selectedChapters;
+      if (patch.selectedSubjectIds !== undefined) dbPatch.selected_subject_ids = patch.selectedSubjectIds;
+      if (patch.selectedChapterIds !== undefined) dbPatch.selected_chapter_ids = patch.selectedChapterIds;
       if (patch.name !== undefined) dbPatch.name = patch.name;
       if (patch.academicBackground !== undefined) dbPatch.academic_background = patch.academicBackground;
       if (patch.targetYear !== undefined) dbPatch.target_year = patch.targetYear;
       if (Object.keys(dbPatch).length) {
         dbPatch.updated_at = new Date().toISOString();
-        await supabase.from("profiles").update(dbPatch).eq("user_id", user.id);
+        const { error } = await supabase.from("profiles").update(dbPatch).eq("user_id", user.id);
+        if (error) throw error;
       }
       await refresh();
     },
