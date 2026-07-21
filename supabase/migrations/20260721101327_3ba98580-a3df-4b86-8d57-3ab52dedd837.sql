@@ -1,0 +1,1 @@
+ALTER TABLE public.syllabus_nodes DROP CONSTRAINT IF EXISTS syllabus_nodes_node_type_check;
