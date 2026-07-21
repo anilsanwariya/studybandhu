@@ -1,8 +1,25 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { SyllabusNode, Status } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
+
+interface SyllabusDbRow {
+  id: string;
+  parent_id: string | null;
+  title: string;
+  node_type: string;
+  sort_order: number;
+}
 
 interface StoreState {
   tree: SyllabusNode[];
@@ -42,7 +59,11 @@ interface StoreCtx extends StoreState {
 
 const StoreContext = createContext<StoreCtx | null>(null);
 
-function walk(nodes: SyllabusNode[], fn: (n: SyllabusNode, parents: SyllabusNode[]) => void, parents: SyllabusNode[] = []) {
+function walk(
+  nodes: SyllabusNode[],
+  fn: (n: SyllabusNode, parents: SyllabusNode[]) => void,
+  parents: SyllabusNode[] = [],
+) {
   for (const n of nodes) {
     fn(n, parents);
     if (n.children) walk(n.children, fn, [...parents, n]);
@@ -57,7 +78,13 @@ function mapTree(nodes: SyllabusNode[], fn: (n: SyllabusNode) => SyllabusNode): 
 }
 
 function resetSubtree(node: SyllabusNode): SyllabusNode {
-  const next: SyllabusNode = { ...node, status: "unread", dueToday: false, revisionCount: 0, nextRevisionAt: null };
+  const next: SyllabusNode = {
+    ...node,
+    status: "unread",
+    dueToday: false,
+    revisionCount: 0,
+    nextRevisionAt: null,
+  };
   if (node.children) next.children = node.children.map(resetSubtree);
   return next;
 }
@@ -97,12 +124,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setTree([]);
         return;
       }
-      const selectedSubjects = new Set(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
-      const selectedChapters = new Set(user.selectedChapterIds ?? user.selectedChapters ?? []);
+      const selectedSubjects = new Set(
+        user.selectedSubjectIds ?? user.selectedSubjects ?? [],
+      );
+      const selectedChapters = new Set(
+        user.selectedChapterIds ?? user.selectedChapters ?? [],
+      );
       const hasSubjectSelection = selectedSubjects.size > 0;
       const hasChapterSelection = selectedChapters.size > 0;
-      const byParent = new Map<string | null, any[]>();
-      for (const row of data) {
+      const byParent = new Map<string | null, SyllabusDbRow[]>();
+      for (const row of data as SyllabusDbRow[]) {
         const arr = byParent.get(row.parent_id) ?? [];
         arr.push(row);
         byParent.set(row.parent_id, arr);
@@ -110,24 +141,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const build = (parentId: string | null): SyllabusNode[] => {
         const rows = byParent.get(parentId) ?? [];
         return rows.flatMap((r) => {
-          if (r.node_type === "subject" && hasSubjectSelection && !selectedSubjects.has(r.id)) return [];
-          if (r.node_type === "chapter" && hasChapterSelection && !selectedChapters.has(r.id)) return [];
-          return [{
-            id: r.id,
-            title: r.title,
-            type: r.node_type as SyllabusNode["type"],
-            status: "unread" as Status,
-            dueToday: false,
-            revisionCount: 0,
-            nextRevisionAt: null,
-            children: build(r.id),
-          }];
+          if (r.node_type === "subject" && hasSubjectSelection && !selectedSubjects.has(r.id)) {
+            return [];
+          }
+          if (r.node_type === "chapter" && hasChapterSelection && !selectedChapters.has(r.id)) {
+            return [];
+          }
+          return [
+            {
+              id: r.id,
+              title: r.title,
+              type: r.node_type as SyllabusNode["type"],
+              status: "unread" as Status,
+              dueToday: false,
+              revisionCount: 0,
+              nextRevisionAt: null,
+              children: build(r.id),
+            },
+          ];
         });
       };
       setTree(build(null));
     })();
-    return () => { cancelled = true; };
-  }, [user?.id, user?.targetExamId, user?.selectedSubjectIds, user?.selectedChapterIds, user?.selectedSubjects, user?.selectedChapters]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    user,
+    user?.id,
+    user?.targetExamId,
+    user?.selectedSubjectIds,
+    user?.selectedChapterIds,
+    user?.selectedSubjects,
+    user?.selectedChapters,
+  ]);
 
   const [bucket, setBucket] = useState<string[]>([]);
   const [streak] = useState(0);
