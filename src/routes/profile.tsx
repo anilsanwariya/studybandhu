@@ -24,6 +24,7 @@ function initials(name: string) {
 function ProfilePage() {
   const { user, signOut } = useAuth();
   const { streak, xp, flatTopics } = useStore();
+  const [editOpen, setEditOpen] = useState(false);
 
   if (!user) {
     return (
