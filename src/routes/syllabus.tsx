@@ -328,13 +328,12 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
 
   // Sync title when edit changes
   const open = edit !== null;
-  const initialTitle = edit?.mode === "edit" ? edit.node.title : "";
-  // reset title on open
-  useState(() => {}); // no-op
-  if (open && title === "" && initialTitle) {
-    // one-time initialization when edit is present
-    // (safe because we clear on close)
-  }
+
+  useEffect(() => {
+    if (edit?.mode === "edit") setTitle(edit.node.title);
+    else if (edit?.mode === "add") setTitle("");
+  }, [edit]);
+
 
   const handleSave = async () => {
     if (!edit) return;
