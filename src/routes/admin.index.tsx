@@ -352,8 +352,10 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         <div className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
       ) : (
         <>
-          <div className="space-y-2">
-            {tree.map((n, i) => <NodeRow key={n.id} node={n} path={[i]} schema={schema} onUpdate={updateNodeAt} onAdd={addChild} />)}
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="space-y-2 min-w-[520px]">
+              {tree.map((n, i) => <NodeRow key={n.id} node={n} path={[i]} schema={schema} onUpdate={updateNodeAt} onAdd={addChild} />)}
+            </div>
           </div>
           <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, 0)}>
             <Plus className="h-3.5 w-3.5" /> Add {schema[0] ?? "item"}
