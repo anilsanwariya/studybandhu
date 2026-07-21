@@ -95,9 +95,9 @@ function ProfilePage() {
         <section className="glass-strong rounded-3xl p-6 lg:col-span-3">
           <h2 className="font-semibold text-lg mb-4">Account Settings</h2>
           <div className="grid sm:grid-cols-3 gap-3">
-            <Button onClick={() => setEditOpen(true)} variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Username, Exam & Syllabus</div>
-              <span className="text-xs text-muted-foreground font-normal">Re-run the onboarding wizard</span>
+            <Button onClick={() => setUsernameOpen(true)} variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
+              <div className="flex items-center gap-2 text-sm font-semibold"><AtSign className="h-3.5 w-3.5" /> Change Username</div>
+              <span className="text-xs text-muted-foreground font-normal">Pick a new @handle</span>
             </Button>
             <Button variant="outline" className="rounded-2xl bg-white/60 h-auto py-4 flex flex-col items-start gap-1">
               <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound className="h-3.5 w-3.5" /> Change Password</div>
