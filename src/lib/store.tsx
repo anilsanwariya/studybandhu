@@ -26,6 +26,7 @@ interface SyllabusDbRow {
 interface StoreState {
   tree: SyllabusNode[];
   syllabusLoading: boolean;
+  levelSchema: string[];
   bucket: string[];
   dailyLimit: number;
   streak: number;
