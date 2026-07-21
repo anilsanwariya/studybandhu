@@ -5,7 +5,12 @@ import { StatusDot } from "@/components/StatusDot";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CheckCircle2, ArrowRight, Home, Zap, Calendar, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,9 +33,10 @@ const PRESETS = [
 ];
 
 function RevisionsPage() {
-  const { bucketNodes, rateTopic, scheduleRevision } = useStore();
+  const { bucketNodes, rateTopic, scheduleRevision, setSubtopicChecked, clearSubtopicChecks } = useStore();
   const [idx, setIdx] = useState(0);
   const [customDays, setCustomDays] = useState("5");
+  const [pendingSubmit, setPendingSubmit] = useState<null | (() => void)>(null);
   const current = bucketNodes[idx];
 
   if (bucketNodes.length === 0 || !current) {
@@ -61,16 +67,34 @@ function RevisionsPage() {
   const pushAll = () => setIdx(bucketNodes.length);
   const advance = () => setIdx((i) => i + 1);
 
+  const subtopics = (current.children ?? []).filter((c) => !c.hidden);
+  const checks = current.subtopicChecks ?? {};
+  const checkedCount = subtopics.filter((s) => checks[s.id]).length;
+  const allChecked = subtopics.length === 0 || checkedCount === subtopics.length;
+
+  const guarded = (fn: () => void) => {
+    if (allChecked) fn();
+    else setPendingSubmit(() => fn);
+  };
+
   const handleAuto = (r: "hard" | "medium" | "easy") => {
-    rateTopic(current.id, r);
-    // current is removed from bucket, keep idx
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      rateTopic(current.id, r);
+    });
   };
   const handlePreset = (days: number) => {
-    scheduleRevision(current.id, days);
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      scheduleRevision(current.id, days);
+    });
   };
   const handleCustom = () => {
     const n = Math.max(0, Math.min(365, parseInt(customDays || "0", 10) || 0));
-    scheduleRevision(current.id, n);
+    guarded(() => {
+      clearSubtopicChecks(current.id);
+      scheduleRevision(current.id, n);
+    });
   };
 
   const progress = (idx / bucketNodes.length) * 100;
@@ -102,6 +126,42 @@ function RevisionsPage() {
           <p className="text-muted-foreground mt-3 text-sm max-w-md mx-auto">
             Recall it in your head. Then schedule the next revision — your call.
           </p>
+
+          {subtopics.length > 0 && (
+            <div className="mt-6 glass rounded-2xl p-4 text-left max-w-lg mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Subtopics
+                </span>
+                <span className="text-xs font-medium text-foreground/70">
+                  {checkedCount}/{subtopics.length} recalled
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {subtopics.map((s) => {
+                  const on = !!checks[s.id];
+                  return (
+                    <label
+                      key={s.id}
+                      className={cn(
+                        "flex items-start gap-3 rounded-xl px-3 py-2 cursor-pointer transition-colors",
+                        on ? "bg-mint/40" : "hover:bg-white/50",
+                      )}
+                    >
+                      <Checkbox
+                        checked={on}
+                        onCheckedChange={(v) => setSubtopicChecked(current.id, s.id, v === true)}
+                        className="mt-0.5"
+                      />
+                      <span className={cn("text-sm flex-1", on && "line-through text-muted-foreground")}>
+                        {s.title}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <Tabs defaultValue="auto" className="mt-8">
             <TabsList className="bg-white/40 backdrop-blur border border-white/50 rounded-full p-1 h-auto mx-auto">
@@ -170,6 +230,30 @@ function RevisionsPage() {
           No streak penalty for pushing back. Come back tomorrow.
         </p>
       </div>
+
+      <AlertDialog open={pendingSubmit !== null} onOpenChange={(o) => { if (!o) setPendingSubmit(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit without checking all subtopics?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You've recalled {checkedCount} of {subtopics.length} subtopics for "{current.title}".
+              Ticking every subtopic before rating gives you a more honest mastery signal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep checking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const fn = pendingSubmit;
+                setPendingSubmit(null);
+                fn?.();
+              }}
+            >
+              Submit anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
