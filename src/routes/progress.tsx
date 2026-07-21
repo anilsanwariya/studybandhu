@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useStore } from "@/lib/store";
 import { levelFromXp } from "@/lib/level";
 import type { SyllabusNode, Status } from "@/lib/mock-syllabus";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { Flame, Zap, Target, TrendingUp, Sparkles } from "lucide-react";
+import { Flame, Zap, Target, TrendingUp, Sparkles, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/progress")({
   head: () => ({
