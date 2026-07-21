@@ -53,10 +53,7 @@ function AdminPanel() {
 
   const reloadExams = async () => {
     const { data } = await supabase.from("exams").select("*").order("created_at", { ascending: false });
-    setExams(((data as any[]) ?? []).map((e) => ({
-      ...e,
-      level_schema: Array.isArray(e.level_schema) ? e.level_schema : DEFAULT_SCHEMA,
-    })));
+    setExams(((data as any[]) ?? []) as Exam[]);
   };
 
   if (loading || !user?.isAdmin) {
@@ -94,7 +91,7 @@ function AdminPanel() {
                   <span className="font-semibold text-sm truncate">{e.name}</span>
                   {e.is_published ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                 </div>
-                <div className="text-[10px] text-muted-foreground truncate">{e.level_schema.join(" > ")}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{SCHEMA.join(" > ")}</div>
               </button>
             ))}
           </div>
