@@ -232,6 +232,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       username: username.trim().toLowerCase(),
       targetExam: exams.find((e) => e.id === examId)?.name ?? "",
       targetExamId: examId,
+      academicBackground,
+      targetYear,
       selectedSubjects,
       selectedChapters,
     };
@@ -240,6 +242,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
         await updateUser({
           username: payload.username,
           targetExamId: payload.targetExamId,
+          academicBackground,
+          targetYear,
           selectedSubjects,
           selectedChapters,
         });
@@ -255,7 +259,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   };
 
   const canContinue1 = uState === "available";
-  const canContinue2 = !!examId;
+  const canContinue2 = !!examId && !!academicBackground && !!targetYear;
   const canFinish = !!examId && selectedSubjects.length > 0 && selectedChapters.length > 0;
 
   const onExamSelect = (id: string) => {
