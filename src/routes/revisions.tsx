@@ -33,9 +33,10 @@ const PRESETS = [
 ];
 
 function RevisionsPage() {
-  const { bucketNodes, rateTopic, scheduleRevision } = useStore();
+  const { bucketNodes, rateTopic, scheduleRevision, setSubtopicChecked, clearSubtopicChecks } = useStore();
   const [idx, setIdx] = useState(0);
   const [customDays, setCustomDays] = useState("5");
+  const [pendingSubmit, setPendingSubmit] = useState<null | (() => void)>(null);
   const current = bucketNodes[idx];
 
   if (bucketNodes.length === 0 || !current) {
