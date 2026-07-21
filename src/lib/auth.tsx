@@ -137,14 +137,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     completeOnboarding: async (data) => {
       if (!user) return;
-      const { error } = await supabase.from("profiles").update({
+      const onboardingPatch: any = {
+        user_id: user.id,
         username: data.username,
         target_exam_id: data.targetExamId ?? null,
         selected_subject_ids: data.selectedSubjects,
         selected_chapter_ids: data.selectedChapters,
         onboarded: true,
         updated_at: new Date().toISOString(),
-      }).eq("user_id", user.id);
+      };
+      const { error } = await supabase.from("profiles").upsert(onboardingPatch, { onConflict: "user_id" });
       if (error) throw error;
       await refresh();
     },
@@ -161,8 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (patch.academicBackground !== undefined) dbPatch.academic_background = patch.academicBackground;
       if (patch.targetYear !== undefined) dbPatch.target_year = patch.targetYear;
       if (Object.keys(dbPatch).length) {
+        dbPatch.user_id = user.id;
         dbPatch.updated_at = new Date().toISOString();
-        const { error } = await supabase.from("profiles").update(dbPatch).eq("user_id", user.id);
+        const { error } = await supabase.from("profiles").upsert(dbPatch, { onConflict: "user_id" });
         if (error) throw error;
       }
       await refresh();
