@@ -231,6 +231,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const awardCounter = useRef(0);
   const dailyLimit = 7;
 
+  // Persist progress + bucket to localStorage on any change (after hydration).
+  useEffect(() => {
+    if (!persistLoaded.current) return;
+    const examId = user?.targetExamId;
+    if (!user || !examId) return;
+    const nodes: Record<string, PersistedNode> = {};
+    walk(tree, (n) => {
+      nodes[n.id] = {
+        status: n.status,
+        dueToday: !!n.dueToday,
+        revisionCount: n.revisionCount ?? 0,
+        nextRevisionAt: n.nextRevisionAt ?? null,
+        excluded: n.excluded,
+        url: n.url,
+        note: n.note,
+      };
+    });
+    try {
+      localStorage.setItem(
+        persistKey(user.id, examId),
+        JSON.stringify({ nodes, bucket, xp } satisfies PersistedState),
+      );
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [tree, bucket, xp, user]);
+
   // Trackable items are the leaves of the tree (whatever the exam's deepest level is called).
   const flatTopics = useMemo(() => {
     const list: SyllabusNode[] = [];
