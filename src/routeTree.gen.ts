@@ -14,6 +14,7 @@ import { Route as RevisionsRouteImport } from './routes/revisions'
 import { Route as ProgressRouteImport } from './routes/progress'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
 
 const SyllabusRoute = SyllabusRouteImport.update({
   id: '/syllabus',
@@ -40,6 +41,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
+  '/admin/login': typeof AdminLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
+  '/admin/login': typeof AdminLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,33 @@ export interface FileRoutesById {
   '/progress': typeof ProgressRoute
   '/revisions': typeof RevisionsRoute
   '/syllabus': typeof SyllabusRoute
+  '/admin/login': typeof AdminLoginRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
+  fullPaths:
+    | '/'
+    | '/profile'
+    | '/progress'
+    | '/revisions'
+    | '/syllabus'
+    | '/admin/login'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
-  id: '__root__' | '/' | '/profile' | '/progress' | '/revisions' | '/syllabus'
+  to:
+    | '/'
+    | '/profile'
+    | '/progress'
+    | '/revisions'
+    | '/syllabus'
+    | '/admin/login'
+  id:
+    | '__root__'
+    | '/'
+    | '/profile'
+    | '/progress'
+    | '/revisions'
+    | '/syllabus'
+    | '/admin/login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +105,7 @@ export interface RootRouteChildren {
   ProgressRoute: typeof ProgressRoute
   RevisionsRoute: typeof RevisionsRoute
   SyllabusRoute: typeof SyllabusRoute
+  AdminLoginRoute: typeof AdminLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProgressRoute: ProgressRoute,
   RevisionsRoute: RevisionsRoute,
   SyllabusRoute: SyllabusRoute,
+  AdminLoginRoute: AdminLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
