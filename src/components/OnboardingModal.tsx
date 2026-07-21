@@ -9,6 +9,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -70,7 +77,20 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [expandedSubjects, setExpandedSubjects] = useState<string[]>([]);
+  const [academicBackground, setAcademicBackground] = useState<string>("");
+  const [targetYear, setTargetYear] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 6 }, (_, i) => String(currentYear + i));
+  const backgroundOptions = [
+    "12th Pass",
+    "Undergraduate",
+    "Graduate",
+    "Postgraduate",
+    "Working Professional",
+    "Other",
+  ];
 
   useEffect(() => {
     if (!isOpen) return;
@@ -92,6 +112,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       setUsername(user.username ?? "");
       setUState(user.username ? "available" : "idle");
       setExamId(user.targetExamId ?? "");
+      setAcademicBackground(user.academicBackground ?? "");
+      setTargetYear(user.targetYear ?? "");
       setSelectedSubjects(user.selectedSubjectIds ?? user.selectedSubjects ?? []);
       setSelectedChapters(user.selectedChapterIds ?? user.selectedChapters ?? []);
     } else if (isOpen && !editMode) {
@@ -99,6 +121,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       setUsername("");
       setUState("idle");
       setExamId("");
+      setAcademicBackground("");
+      setTargetYear("");
       setSyllabus([]);
       setSelectedSubjects([]);
       setSelectedChapters([]);
@@ -208,6 +232,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
       username: username.trim().toLowerCase(),
       targetExam: exams.find((e) => e.id === examId)?.name ?? "",
       targetExamId: examId,
+      academicBackground,
+      targetYear,
       selectedSubjects,
       selectedChapters,
     };
@@ -216,6 +242,8 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
         await updateUser({
           username: payload.username,
           targetExamId: payload.targetExamId,
+          academicBackground,
+          targetYear,
           selectedSubjects,
           selectedChapters,
         });
@@ -231,7 +259,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
   };
 
   const canContinue1 = uState === "available";
-  const canContinue2 = !!examId;
+  const canContinue2 = !!examId && !!academicBackground && !!targetYear;
   const canFinish = !!examId && selectedSubjects.length > 0 && selectedChapters.length > 0;
 
   const onExamSelect = (id: string) => {
@@ -394,6 +422,42 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                   </button>
                 );
               })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground pl-1">
+                    Academic background
+                  </label>
+                  <Select value={academicBackground} onValueChange={setAcademicBackground}>
+                    <SelectTrigger className="glass rounded-2xl h-11 bg-white/60">
+                      <SelectValue placeholder="Select background" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {backgroundOptions.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground pl-1">
+                    Target exam year
+                  </label>
+                  <Select value={targetYear} onValueChange={setTargetYear}>
+                    <SelectTrigger className="glass rounded-2xl h-11 bg-white/60">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {yearOptions.map((y) => (
+                        <SelectItem key={y} value={y}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           )}
 
