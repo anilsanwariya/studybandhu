@@ -4,9 +4,12 @@ export interface AuthUser {
   name: string;
   email: string;
   avatarUrl?: string;
+  username?: string;
   targetExam?: string;
   academicBackground?: string;
   targetYear?: string;
+  selectedSubjects?: string[];
+  selectedChapters?: string[];
   joinedAt: string; // ISO
   onboarded: boolean;
 }
@@ -17,7 +20,7 @@ interface AuthCtx {
   needsOnboarding: boolean;
   signIn: (u: { name: string; email: string; avatarUrl?: string }) => void;
   signOut: () => void;
-  completeOnboarding: (data: { targetExam: string; academicBackground: string; targetYear: string }) => void;
+  completeOnboarding: (data: { username: string; targetExam: string; selectedSubjects: string[]; selectedChapters: string[] }) => void;
   updateUser: (patch: Partial<AuthUser>) => void;
 }
 
