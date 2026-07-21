@@ -180,6 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user_id: user.id,
         username: data.username,
         target_exam_id: data.targetExamId ?? null,
+        academic_background: data.academicBackground ?? null,
+        target_year: data.targetYear ?? null,
         selected_subject_ids: data.selectedSubjects,
         selected_chapter_ids: data.selectedChapters,
         onboarded: true,
