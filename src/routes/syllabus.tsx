@@ -88,8 +88,8 @@ function TreeNode({ node, depth, onOpen }: { node: SyllabusNode; depth: number; 
           onClick={() => onOpen(node.id)}
           className={cn(
             "flex-1 text-left text-sm min-w-0 truncate",
-            node.type === "subject" && "font-semibold text-base",
-            node.type === "chapter" && "font-medium",
+            node.depth === 0 && "font-semibold text-base",
+            node.depth === 1 && "font-medium",
             node.excluded && "line-through",
           )}
         >
@@ -99,6 +99,7 @@ function TreeNode({ node, depth, onOpen }: { node: SyllabusNode; depth: number; 
           {node.type}
         </span>
         <ResetButton nodeTitle={node.title} onConfirm={() => resetNode(node.id)} />
+
       </div>
       {hasChildren && expanded && (
         <div className="space-y-1 mt-1">
