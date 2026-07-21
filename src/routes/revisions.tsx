@@ -230,6 +230,30 @@ function RevisionsPage() {
           No streak penalty for pushing back. Come back tomorrow.
         </p>
       </div>
+
+      <AlertDialog open={pendingSubmit !== null} onOpenChange={(o) => { if (!o) setPendingSubmit(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit without checking all subtopics?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You've recalled {checkedCount} of {subtopics.length} subtopics for "{current.title}".
+              Ticking every subtopic before rating gives you a more honest mastery signal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep checking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const fn = pendingSubmit;
+                setPendingSubmit(null);
+                fn?.();
+              }}
+            >
+              Submit anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
