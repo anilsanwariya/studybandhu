@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Plus, LogOut, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles, X } from "lucide-react";
+import { Loader2, Plus, LogOut, ChevronRight, ChevronDown, Trash2, Save, FilePlus, Eye, EyeOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/")({
@@ -23,7 +23,6 @@ interface Exam {
   slug: string;
   description: string | null;
   is_published: boolean;
-  level_schema: string[];
 }
 interface DbNode {
   id: string;
@@ -37,7 +36,7 @@ interface TreeNode extends DbNode {
   children: TreeNode[];
 }
 
-const DEFAULT_SCHEMA = ["subject", "chapter", "topic", "subtopic"];
+const SCHEMA = ["subject", "chapter", "topic", "subtopic"] as const;
 
 function AdminPanel() {
   const nav = useNavigate();
@@ -54,10 +53,7 @@ function AdminPanel() {
 
   const reloadExams = async () => {
     const { data } = await supabase.from("exams").select("*").order("created_at", { ascending: false });
-    setExams(((data as any[]) ?? []).map((e) => ({
-      ...e,
-      level_schema: Array.isArray(e.level_schema) ? e.level_schema : DEFAULT_SCHEMA,
-    })));
+    setExams(((data as any[]) ?? []) as Exam[]);
   };
 
   if (loading || !user?.isAdmin) {
@@ -95,7 +91,7 @@ function AdminPanel() {
                   <span className="font-semibold text-sm truncate">{e.name}</span>
                   {e.is_published ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                 </div>
-                <div className="text-[10px] text-muted-foreground truncate">{e.level_schema.join(" > ")}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{SCHEMA.join(" > ")}</div>
               </button>
             ))}
           </div>
@@ -122,23 +118,20 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
-  const [schemaText, setSchemaText] = useState(DEFAULT_SCHEMA.join(", "));
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!name || !slug) return;
-    const level_schema = schemaText.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-    if (level_schema.length === 0) { toast.error("Provide at least one level"); return; }
     setBusy(true);
     const { data, error } = await supabase
       .from("exams")
-      .insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description, level_schema } as any)
+      .insert({ name, slug: slug.toLowerCase().replace(/\s+/g, "-"), description } as any)
       .select("id").single();
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Exam created");
     onCreated(data.id);
-    setName(""); setSlug(""); setDescription(""); setSchemaText(DEFAULT_SCHEMA.join(", "));
+    setName(""); setSlug(""); setDescription("");
     onOpenChange(false);
   };
 
@@ -149,10 +142,8 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
         <div className="space-y-3">
           <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => { setName(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-")); }} placeholder="UPSC CSE" className="bg-white/60 border-white/70 rounded-xl" /></div>
           <div className="space-y-1.5"><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="upsc-cse" className="bg-white/60 border-white/70 rounded-xl" /></div>
-          <div className="space-y-1.5">
-            <Label>Hierarchy levels (top → bottom, comma-separated)</Label>
-            <Input value={schemaText} onChange={(e) => setSchemaText(e.target.value)} placeholder="paper, unit, subject, chapter, topic, subtopic" className="bg-white/60 border-white/70 rounded-xl font-mono text-xs" />
-            <p className="text-[11px] text-muted-foreground">e.g. RAS: paper, unit, subject, chapter, topic, subtopic. Patwar: paper, unit, subject, chapter, topic, subtopic. Simple: subject, chapter, topic, subtopic.</p>
+          <div className="glass rounded-xl px-3 py-2 text-[11px] text-muted-foreground">
+            Every exam uses the fixed hierarchy: <span className="font-semibold text-foreground">Subject &rsaquo; Chapter &rsaquo; Topic &rsaquo; Subtopic</span>.
           </div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-white/60 border-white/70 rounded-xl" /></div>
           <Button onClick={submit} disabled={busy || !name || !slug} className="w-full rounded-full">{busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Create</Button>
@@ -162,52 +153,15 @@ function NewExamDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpe
   );
 }
 
-function SchemaEditor({ schema, onChange }: { schema: string[]; onChange: (next: string[]) => void }) {
-  const [draft, setDraft] = useState("");
-  return (
-    <div className="glass rounded-2xl p-3">
-      <div className="text-xs font-semibold text-muted-foreground mb-2">Hierarchy levels (top → bottom)</div>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {schema.map((label, i) => (
-          <span key={`${label}-${i}`} className="inline-flex items-center gap-1 bg-white/70 rounded-full px-2.5 py-1 text-xs font-medium">
-            <span className="text-muted-foreground">L{i}</span>
-            {label}
-            <button className="ml-1 h-4 w-4 rounded-full hover:bg-destructive/20 hover:text-destructive flex items-center justify-center" onClick={() => onChange(schema.filter((_, idx) => idx !== i))} aria-label={`Remove ${label}`}>
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              onChange([...schema, draft.trim().toLowerCase()]);
-              setDraft("");
-            }
-          }}
-          placeholder="Add level (e.g. paper)"
-          className="h-8 bg-white/60 border-white/70 rounded-lg text-xs"
-        />
-        <Button size="sm" variant="outline" className="rounded-full h-8 bg-white/60" onClick={() => { if (draft.trim()) { onChange([...schema, draft.trim().toLowerCase()]); setDraft(""); } }}>
-          Add
-        </Button>
-      </div>
-    </div>
-  );
-}
+
 
 function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
-  const [schema, setSchema] = useState<string[]>(exam.level_schema);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const parseFn = useServerFn(parseSyllabusPdf);
-
-  useEffect(() => { setSchema(exam.level_schema); }, [exam.id, exam.level_schema]);
+  const schema = SCHEMA as unknown as string[];
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -233,12 +187,6 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     else { toast.success(!exam.is_published ? "Published" : "Unpublished"); onChange(); }
   };
 
-  const saveSchema = async () => {
-    if (schema.length === 0) { toast.error("Schema cannot be empty"); return; }
-    const { error } = await supabase.from("exams").update({ level_schema: schema } as any).eq("id", exam.id);
-    if (error) toast.error(error.message); else { toast.success("Schema updated"); onChange(); }
-  };
-
   const deleteExam = async () => {
     if (!confirm(`Delete "${exam.name}" and all its syllabus?`)) return;
     const { error } = await supabase.from("exams").delete().eq("id", exam.id);
@@ -254,7 +202,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
       const base64 = btoa(binary);
-      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}`, levelSchema: schema } });
+      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}` } });
       const flat = flattenAi(result.nodes ?? [], schema, 0);
       setTree(flat);
       toast.success(`Parsed ${countAll(flat)} items. Review and save.`);
@@ -321,6 +269,9 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         <div>
           <h2 className="text-xl font-bold">{exam.name}</h2>
           <p className="text-xs text-muted-foreground">{exam.description || exam.slug}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+            {schema.join(" › ")}
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <label className="inline-flex">
@@ -341,13 +292,6 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         </div>
       </div>
 
-      <div className="mb-5 space-y-2">
-        <SchemaEditor schema={schema} onChange={setSchema} />
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" className="rounded-full bg-white/60" onClick={saveSchema}>Save schema</Button>
-        </div>
-      </div>
-
       {loading ? (
         <div className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
       ) : (
@@ -358,14 +302,15 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             </div>
           </div>
           <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, 0)}>
-            <Plus className="h-3.5 w-3.5" /> Add {schema[0] ?? "item"}
+            <Plus className="h-3.5 w-3.5" /> Add {schema[0]}
           </Button>
-          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill the tree using this exam's schema. Review, edit, then Save.</p>
+          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill Subject &rsaquo; Chapter &rsaquo; Topic &rsaquo; Subtopic. Review, edit, then Save.</p>
         </>
       )}
     </div>
   );
 }
+
 
 function NodeRow({ node, path, schema, onUpdate, onAdd }: {
   node: TreeNode;

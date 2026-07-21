@@ -21,7 +21,6 @@ export type Database = {
           description: string | null
           id: string
           is_published: boolean
-          level_schema: Json
           name: string
           slug: string
           updated_at: string
@@ -32,7 +31,6 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean
-          level_schema?: Json
           name: string
           slug: string
           updated_at?: string
@@ -43,7 +41,6 @@ export type Database = {
           description?: string | null
           id?: string
           is_published?: boolean
-          level_schema?: Json
           name?: string
           slug?: string
           updated_at?: string
@@ -143,6 +140,32 @@ export type Database = {
           },
         ]
       }
+      user_node_hidden: {
+        Row: {
+          created_at: string
+          node_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          node_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          node_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_node_hidden_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "syllabus_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -163,6 +186,56 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_syllabus_nodes: {
+        Row: {
+          created_at: string
+          depth: number
+          exam_id: string
+          id: string
+          node_type: string
+          parent_id: string
+          parent_kind: string
+          sort_order: number
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          depth: number
+          exam_id: string
+          id?: string
+          node_type: string
+          parent_id: string
+          parent_kind: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          depth?: number
+          exam_id?: string
+          id?: string
+          node_type?: string
+          parent_id?: string
+          parent_kind?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_syllabus_nodes_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

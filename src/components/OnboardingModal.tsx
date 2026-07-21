@@ -38,7 +38,6 @@ interface Exam {
   name: string;
   description: string | null;
   slug: string;
-  level_schema: string[];
 }
 
 interface SyllabusRow {
@@ -100,29 +99,20 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
     "Other",
   ];
 
-  const currentExam = exams.find((e) => e.id === examId);
-  const schema = currentExam?.level_schema ?? ["subject", "chapter", "topic", "subtopic"];
-  const l1Label = schema[0] ?? "subject";
-  const l2Label = schema[1] ?? "chapter";
-  const hasL2 = schema.length > 1;
+  const l1Label = "subject";
+  const l2Label = "chapter";
+  const hasL2 = true;
 
   useEffect(() => {
     if (!isOpen) return;
     setLoadingExams(true);
     supabase
       .from("exams")
-      .select("id, name, description, slug, level_schema")
+      .select("id, name, description, slug")
       .eq("is_published", true)
       .order("name")
       .then(({ data }) => {
-        setExams(
-          ((data as any[]) ?? []).map((e) => ({
-            ...e,
-            level_schema: Array.isArray(e.level_schema)
-              ? e.level_schema
-              : ["subject", "chapter", "topic", "subtopic"],
-          })) as Exam[],
-        );
+        setExams(((data as any[]) ?? []) as Exam[]);
         setLoadingExams(false);
       });
   }, [isOpen]);

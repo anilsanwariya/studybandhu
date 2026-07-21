@@ -6,14 +6,14 @@ const InputSchema = z.object({
   fileBase64: z.string().min(10),
   mimeType: z.string().default("application/pdf"),
   hint: z.string().optional(),
-  levelSchema: z.array(z.string().min(1)).min(1).default(["subject", "chapter", "topic", "subtopic"]),
 });
+
+const SCHEMA = ["subject", "chapter", "topic", "subtopic"] as const;
 
 export const parseSyllabusPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data, context }) => {
-    // Verify admin
     const { data: isAdmin } = await context.supabase.rpc("has_role", {
       _user_id: context.userId,
       _role: "admin",
@@ -23,24 +23,24 @@ export const parseSyllabusPdf = createServerFn({ method: "POST" })
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
-    const schema = data.levelSchema;
-    const chain = schema.join(" > ");
+    const chain = SCHEMA.join(" > ");
     const SYSTEM = `You are a syllabus parser for competitive exam preparation.
-Given a syllabus document, extract a strict hierarchical outline as JSON matching THIS exam's level schema.
+Extract a strict 4-level hierarchical outline as JSON matching the fixed schema below.
 
-Level schema for THIS exam (in order, top to bottom): ${chain}
-- Depth 0 nodes MUST have type "${schema[0]}".
-- Each deeper level uses the next label in the schema.
-- Do NOT invent levels that are not in the schema; if the document is flatter, stop at the level it actually reaches.
-- Do NOT introduce labels outside the schema.
+Fixed schema (top → bottom): ${chain}
+- Depth 0 nodes MUST have type "subject".
+- Depth 1 nodes MUST have type "chapter".
+- Depth 2 nodes MUST have type "topic".
+- Depth 3 nodes MUST have type "subtopic".
+- Do NOT introduce any other labels.
+- If the source document has a coarser structure (e.g. Paper > Unit > ...), COLLAPSE it into these four levels by folding the outer groupings into the subject title (e.g. "Paper I — Indian Polity").
+- If the source is shallower, stop at the deepest level the document reaches. Do not invent content.
 
 Output ONLY valid JSON, no prose:
-{ "nodes": Array<{ "title": string; "type": string; "depth": number; "children"?: same[] }> }
+{ "nodes": Array<{ "title": string; "type": "subject"|"chapter"|"topic"|"subtopic"; "depth": 0|1|2|3; "children"?: same[] }> }
 Rules:
-- "type" MUST be one of: ${schema.map((s) => `"${s}"`).join(", ")}.
-- "depth" MUST equal the index of "type" in the schema (0-based).
-- Preserve the source's numbering/ordering as-is in titles when meaningful.
-- Do not invent content that isn't in the document.
+- "depth" MUST equal the index of "type" in [subject, chapter, topic, subtopic].
+- Preserve source numbering/ordering in titles when meaningful.
 - Trim whitespace, keep titles concise.`;
 
     const body = {
@@ -53,8 +53,8 @@ Rules:
             {
               type: "text",
               text: data.hint
-                ? `Context: ${data.hint}\n\nExtract the syllabus outline as JSON using the level schema: ${chain}.`
-                : `Extract the syllabus outline as JSON using the level schema: ${chain}.`,
+                ? `Context: ${data.hint}\n\nExtract the syllabus as JSON using Subject > Chapter > Topic > Subtopic.`
+                : `Extract the syllabus as JSON using Subject > Chapter > Topic > Subtopic.`,
             },
             {
               type: "file",
@@ -71,10 +71,7 @@ Rules:
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": key,
-      },
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": key },
       body: JSON.stringify(body),
     });
 

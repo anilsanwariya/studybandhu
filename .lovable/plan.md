@@ -1,59 +1,86 @@
 ## Goal
-Support arbitrarily-shaped syllabus hierarchies per exam (RAS: Paper → Unit → Subject → Chapter → Topic → Subtopic; Patwar: Paper → Unit → Subject → Chapter → Topic → Subtopic; future exams: anything else) without hard-coding levels.
 
-## Core idea: keep the existing generic tree, formalize `node_type` as free-form labels per exam
+Lock the syllabus to a single fixed schema — **Subject → Chapter → Topic → Subtopic** — for every exam. Topics become the unit of daily study and revision. Subtopics get checkboxes inside a topic revision card and persist their own status. Students get per-user customization at the Chapter/Topic/Subtopic layers.
 
-The `syllabus_nodes` table is already a self-referential tree (`parent_id`, `sort_order`, `node_type text`). That structure already supports any depth and any labels — we just need to stop treating `node_type` as a fixed enum of `subject/chapter/topic/subtopic` and start treating it as an exam-defined label.
+## Fixed schema
 
-Two small additions make this robust:
+Drop the variable `level_schema` concept. Everywhere in the app:
+- depth 0 = Subject
+- depth 1 = Chapter
+- depth 2 = Topic (this is what goes into the bucket and revision engine)
+- depth 3 = Subtopic (checklist inside a topic; not independently bucketed)
 
-1. **Per-exam level schema** — each exam declares the ordered list of level labels it uses. RAS = `["paper","unit","subject","chapter","topic","subtopic"]`, Patwar = `["paper","unit","subject","chapter","topic","subtopic"]`, a future exam could be `["section","topic"]`. Stored as `exams.level_schema jsonb` (array of strings).
-2. **Depth on each node** — `syllabus_nodes.depth int` (0 = root child of exam). Combined with `exam.level_schema[depth]`, we always know what a node "is" without hard-coding names. `node_type` stays as the human label (denormalized from schema for convenience and to allow the odd off-schema node).
+Existing exam trees are wiped and re-parsed by admin against the new schema.
 
-Nothing else about the tree changes — parent/child, sort_order, RLS, and the admin AI parser stay as-is.
+## Database changes (single migration)
 
-## What changes
+1. `exams.level_schema` — drop column (or ignore; simplest: drop).
+2. `syllabus_nodes` — **wipe all rows**. Admin re-uploads PDFs. `depth` and `node_type` stay but are constrained to the 4 fixed values.
+3. New table `user_syllabus_nodes` — student-owned overrides:
+   - `user_id`, `exam_id`, `parent_id` (references either `syllabus_nodes.id` for admin parent or another `user_syllabus_nodes.id`), `parent_kind` ('admin' | 'user'), `title`, `node_type` ('chapter' | 'topic' | 'subtopic'), `depth`, `sort_order`.
+   - RLS: full CRUD scoped to `auth.uid() = user_id`.
+4. New table `user_node_hidden` — student's hide list for admin nodes:
+   - `user_id`, `node_id` (FK `syllabus_nodes.id`), unique(`user_id`,`node_id`).
+   - RLS: CRUD scoped to `auth.uid() = user_id`.
+5. `profiles.selected_chapter_ids` continues to work (it stores UUIDs; admin + user chapter IDs coexist as long as they're unique UUIDs).
 
-### Database (one migration)
-- `exams`: add `level_schema jsonb not null default '["subject","chapter","topic","subtopic"]'::jsonb`.
-- `syllabus_nodes`: add `depth int not null default 0`. Backfill from existing rows by walking `parent_id`.
-- Keep `node_type` as free text; no enum.
-- No policy changes needed.
+Subtopic status (checked/unchecked, mastery) stays in the existing `localStorage` progress store keyed by node id — no schema change needed. This keeps the client-side persistence model already in place.
 
-### Admin panel (`/admin`)
-- When creating/editing an exam, admin edits the level schema as an ordered chip list ("Paper, Unit, Subject, Chapter, Topic, Subtopic" for RAS; different for Patwar).
-- AI PDF parser (`src/lib/syllabus-ai.functions.ts`): pass the exam's `level_schema` into the system prompt so Gemini emits nodes tagged with the right labels and depth for that exam. Output shape becomes `{ nodes: [{ title, type, depth, children? }] }` where `type` must be one of the schema labels.
-- Tree editor renders labels dynamically from `level_schema[depth]` instead of assuming subject/chapter/topic/subtopic.
+## Syllabus tab
 
-### Student onboarding curation (Step 3)
-- Today's step 3 assumes two fixed levels (subjects + chapters). Change it to curate at the **top two levels of the exam's schema** — whatever those happen to be. For RAS the student picks Papers, then Units under each Paper; for Patwar, Paper (only one) then Units; for a flat exam, whatever the top two levels are. `profiles.selected_subject_ids` / `selected_chapter_ids` become generic `selected_l1_ids` / `selected_l2_ids` (rename with a migration, or keep column names and treat them as generic — see Technical details).
+- Rendering merges admin nodes (from `syllabus_nodes`) with the student's `user_syllabus_nodes` and applies `user_node_hidden` as a visibility mask.
+- Each row shows action affordances based on ownership:
+  - **Admin node**: Hide / Unhide only (no delete, no edit).
+  - **User node**: Edit title, Delete, plus an "Add child" action.
+- "Add" buttons appear on Subject rows ("Add chapter"), Chapter rows ("Add topic"), and Topic rows ("Add subtopic"). Subject-level add is disabled — students can't add subjects.
+- Filters (Subject/Chapter) keep working over the merged tree.
 
-### Syllabus tree UI (`src/routes/syllabus.tsx`) and store
-- `SyllabusNode.type` becomes `string` (not a union).
-- Node "kind" label shown in the row and drawer reads from `exam.level_schema[node.depth]` rather than a hard-coded set.
-- Font-weight/visual hierarchy currently keyed off `type === "subject"` / `"chapter"` becomes keyed off `depth` (depth 0 = boldest, etc.).
-- Status dots, reset, drawer, exclude — all unchanged; they already work per-node.
+## Morning Intent / bucket
 
-### Revision engine, analytics, progress
-- No schema changes needed. "Mastery %", "Subject completion" etc. currently group by the `subject` level. Replace that assumption with "group by depth 0 of this exam's schema" so it works for any exam shape.
+- Bucket only accepts **topic** nodes (depth 2), admin or user-owned.
+- Existing bucket UI already filters by leaf; change it to filter by `node_type === 'topic'` so admin topics that happen to have no subtopics still qualify, and admin nodes deeper than topic (there won't be any after wipe) are excluded.
 
-## Technical details
+## Revision engine — subtopic checklist
 
-- **Depth backfill SQL** (single migration): recursive CTE over `syllabus_nodes` computing depth from root, then `UPDATE ... FROM cte`.
-- **Column rename** for `profiles.selected_subject_ids` → `selected_l1_ids` and `selected_chapter_ids` → `selected_l2_ids` is optional. Recommended to avoid the columns lying about their meaning, but requires updating `src/lib/auth.tsx`, `OnboardingModal.tsx`, and `store.tsx`. Cheaper option: leave column names, add a code-level comment. Plan assumes rename.
-- **AI prompt**: inject `Level schema for this exam (in order): ${schema.join(" > ")}` into the system prompt and require `type` ∈ schema and `depth` = index of `type` in schema.
-- **Validation** on admin save: reject any node whose `type` isn't in the exam's schema, or whose depth doesn't match `schema.indexOf(type)`.
-- **Existing RAS data**: after backfill, verify depths look right in `/admin`; the admin can re-run the AI parse against the RAS PDF with the new 6-level schema if the current tree is only 4 levels deep.
+- Topic card in `/revisions` shows a checklist of that topic's subtopics (admin + user, minus hidden).
+- Each subtopic row: checkbox, title, tap-to-mark-mastery (small status dot updates like elsewhere).
+- Submit (Hard/Medium/Easy or Preset/Custom):
+  - If all subtopics checked → submit immediately.
+  - If any unchecked → confirm dialog: "Submit without completing X subtopics?" with Cancel / Submit anyway.
+  - Topics with zero subtopics submit immediately (no checklist rendered).
+- Checked state persists per subtopic in the same `localStorage` progress store; on next revision of the same topic, previously-checked subtopics show as checked but stay editable.
 
-## Out of scope for this plan
-- Cross-exam node reuse (sharing "Indian Polity" between RAS and UPSC). Can be added later via a `syllabus_templates` table.
-- Free-form user-added nodes under an exam's tree.
+## Progress page
+
+- Subject Completion always groups by depth 0 (Subject) — remove the schema lookup, use the constant.
+- Topic Mastery tree renders the fixed 4 levels.
+
+## Onboarding
+
+- Step 3 curation: pick Subjects (L1), then Chapters (L2). Wording becomes literal ("Subjects", "Chapters") again — no schema-driven labels.
+- `selected_subject_ids` / `selected_chapter_ids` semantics restored to their original meaning.
+
+## Admin panel
+
+- Remove level-schema editor from exam create/edit.
+- AI PDF parser prompt fixed to emit exactly `subject / chapter / topic / subtopic` with matching depths; reject other labels.
 
 ## Files touched
-- Migration: `exams.level_schema`, `syllabus_nodes.depth`, optional `profiles` column rename.
-- `src/lib/syllabus-ai.functions.ts` — prompt + output schema.
-- `src/routes/admin.index.tsx` — level-schema editor, dynamic labels.
-- `src/components/OnboardingModal.tsx` — generic L1/L2 curation.
-- `src/lib/store.tsx`, `src/lib/mock-syllabus.ts` (types), `src/routes/syllabus.tsx` — dynamic depth-based rendering.
-- `src/routes/progress.tsx` — group by depth 0 instead of hard-coded "subject".
-- `src/lib/auth.tsx` — if renaming profile columns.
+
+- Migration: drop `exams.level_schema`, truncate `syllabus_nodes`, create `user_syllabus_nodes` + `user_node_hidden` with GRANTs and RLS.
+- `src/integrations/supabase/types.ts` — regenerated after migration.
+- `src/lib/syllabus-ai.functions.ts` — hard-coded 4-level prompt/output schema.
+- `src/routes/admin.index.tsx` — remove schema editor.
+- `src/routes/syllabus.tsx` — merged tree, hide/unhide, add/edit/delete UI, per-user CRUD server fns.
+- New `src/lib/user-syllabus.functions.ts` — `addUserNode`, `updateUserNode`, `deleteUserNode`, `hideAdminNode`, `unhideAdminNode`, `listUserOverrides`.
+- `src/lib/store.tsx` — merge admin + user nodes into the in-memory tree; extend persisted state with `subtopicChecks: Record<subtopicId, boolean>`; bucket accepts topic-depth nodes; revision `rateTopic` clears the checklist after submit.
+- `src/routes/revisions.tsx` — subtopic checklist, unchecked-submit confirmation dialog.
+- `src/components/MorningIntent.tsx` — bucket target is topic nodes; label copy back to Subject/Chapter.
+- `src/components/OnboardingModal.tsx` — literal "Subjects"/"Chapters" labels; remove schema-derived labels.
+- `src/routes/progress.tsx` — fixed depth-0 subject grouping.
+
+## Out of scope
+
+- Sharing custom subtopics between students.
+- Bulk import of custom subtopics.
+- Moving/reordering custom nodes across parents.
