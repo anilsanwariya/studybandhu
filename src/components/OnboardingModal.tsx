@@ -583,7 +583,7 @@ export function OnboardingModal({ open, onOpenChange, editMode = false }: Props 
                 Cancel
               </Button>
             )}
-            {step > 1 && (
+            {step > 1 && !(editMode && step === 2) && (
               <Button
                 variant="outline"
                 className="rounded-full bg-white/60"
