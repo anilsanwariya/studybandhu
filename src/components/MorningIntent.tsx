@@ -7,7 +7,7 @@ import { quotes } from "@/lib/mock-syllabus";
 import type { SyllabusNode } from "@/lib/mock-syllabus";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Minus, Quote, Play, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Plus, Minus, Quote, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Extend the node type to carry its parent context in a flat list
@@ -91,7 +91,7 @@ export function MorningIntent() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="max-w-2xl mx-auto w-full relative">
         {/* Quote banner */}
         <div className="glass rounded-3xl px-4 py-3 flex items-start gap-3 mb-5">
           <div className="h-8 w-8 rounded-full bg-lavender/70 flex items-center justify-center shrink-0 mt-0.5">
@@ -115,13 +115,17 @@ export function MorningIntent() {
                 setChapterFilter("all");
               }}
             >
-              <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 flex-1 min-w-0 text-sm">
-                <SelectValue placeholder="Subject" />
+              <SelectTrigger className="h-auto min-h-10 py-2 rounded-2xl bg-white/70 border-white/60 flex-1 min-w-0 text-sm text-left">
+                <div className="truncate">
+                  <SelectValue placeholder="Subject" />
+                </div>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Subjects</SelectItem>
+              <SelectContent className="max-w-[90vw] sm:max-w-md w-full max-h-[50vh]">
+                <SelectItem value="all" className="whitespace-normal break-words py-2.5 pr-8">
+                  All Subjects
+                </SelectItem>
                 {subjects.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} className="whitespace-normal break-words py-2.5 pr-8">
                     {s.title}
                   </SelectItem>
                 ))}
@@ -129,13 +133,17 @@ export function MorningIntent() {
             </Select>
 
             <Select value={chapterFilter} onValueChange={setChapterFilter} disabled={chapters.length === 0}>
-              <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 flex-1 min-w-0 text-sm">
-                <SelectValue placeholder="Chapter" />
+              <SelectTrigger className="h-auto min-h-10 py-2 rounded-2xl bg-white/70 border-white/60 flex-1 min-w-0 text-sm text-left">
+                <div className="truncate">
+                  <SelectValue placeholder="Chapter" />
+                </div>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Chapters</SelectItem>
+              <SelectContent className="max-w-[90vw] sm:max-w-md w-full max-h-[50vh]">
+                <SelectItem value="all" className="whitespace-normal break-words py-2.5 pr-8">
+                  All Chapters
+                </SelectItem>
                 {chapters.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
+                  <SelectItem key={c.id} value={c.id} className="whitespace-normal break-words py-2.5 pr-8">
                     {c.title}
                   </SelectItem>
                 ))}
@@ -146,7 +154,7 @@ export function MorningIntent() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="rounded-full h-9 px-3 text-xs shrink-0"
+                className="rounded-full h-10 px-3 text-xs shrink-0"
                 onClick={() => {
                   setSubjectFilter("all");
                   setChapterFilter("all");
@@ -159,42 +167,43 @@ export function MorningIntent() {
         )}
 
         {/* Main Focused Carousel Card */}
-        <section className="glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[65vh] lg:h-[calc(100vh-18rem)]">
-          {/* Arrow Navigation Header */}
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/20 shrink-0">
+        <section className="relative glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[65vh] lg:h-[calc(100vh-18rem)] overflow-hidden">
+          {/* Centered Transparent Navigation Arrows */}
+          {paneIdx > 0 && (
             <Button
               size="icon"
               variant="ghost"
-              className="rounded-full hover:bg-white/40"
+              className="absolute left-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-full bg-transparent hover:bg-white/30 z-20 transition-colors"
               onClick={() => setPaneIdx((p) => Math.max(0, p - 1) as 0 | 1 | 2)}
-              disabled={paneIdx === 0}
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-8 w-8 text-slate-600/70" />
             </Button>
+          )}
 
-            <div className="text-center px-2 min-w-0 flex-1">
-              <h2 className="font-semibold text-base sm:text-lg truncate">
-                {PANES[paneIdx].title}
-                {paneIdx === 0 && <span className="ml-2 text-sm opacity-60 font-normal">({newTopics.length})</span>}
-                {paneIdx === 1 && <span className="ml-2 text-sm opacity-60 font-normal">({dueTopics.length})</span>}
-              </h2>
-              <p className="text-xs text-muted-foreground truncate">{PANES[paneIdx].subtitle}</p>
-            </div>
-
+          {paneIdx < 2 && (
             <Button
               size="icon"
               variant="ghost"
-              className="rounded-full hover:bg-white/40"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-full bg-transparent hover:bg-white/30 z-20 transition-colors"
               onClick={() => setPaneIdx((p) => Math.min(2, p + 1) as 0 | 1 | 2)}
-              disabled={paneIdx === 2}
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-8 w-8 text-slate-600/70" />
             </Button>
+          )}
+
+          {/* Header - Centered title */}
+          <div className="text-center mb-4 pb-3 border-b border-white/20 shrink-0 px-8">
+            <h2 className="font-semibold text-base sm:text-lg truncate">
+              {PANES[paneIdx].title}
+              {paneIdx === 0 && <span className="ml-2 text-sm opacity-60 font-normal">({newTopics.length})</span>}
+              {paneIdx === 1 && <span className="ml-2 text-sm opacity-60 font-normal">({dueTopics.length})</span>}
+            </h2>
+            <p className="text-xs text-muted-foreground truncate">{PANES[paneIdx].subtitle}</p>
           </div>
 
           {/* New Topics Pane */}
           {paneIdx === 0 && (
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-4 sm:px-6">
               <TopicList
                 topics={newTopics}
                 bucket={bucket}
@@ -207,7 +216,7 @@ export function MorningIntent() {
 
           {/* Due Topics Pane */}
           {paneIdx === 1 && (
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-4 sm:px-6">
               <TopicList
                 topics={dueTopics}
                 bucket={bucket}
@@ -220,7 +229,7 @@ export function MorningIntent() {
 
           {/* Today's Bucket Pane */}
           {paneIdx === 2 && (
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col z-10 px-4 sm:px-6">
               <div className="mb-4 shrink-0">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium">Ready to focus?</span>
@@ -311,7 +320,7 @@ function TopicList({
     return <div className="text-center py-10 text-sm text-muted-foreground">No topics found. Breathe.</div>;
   }
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 pb-4">
       {topics.map((t) => (
         <TopicCard key={t.id} topic={t} bucket={bucket} onAdd={onAdd} onRemove={onRemove} full={full} />
       ))}
@@ -371,7 +380,7 @@ function TopicCard({
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0"
+            className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0 z-20 relative"
             onClick={(e) => {
               e.stopPropagation();
               onRemove(topic.id);
@@ -383,7 +392,7 @@ function TopicCard({
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0"
+            className="h-8 w-8 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0 z-20 relative"
             disabled={full}
             onClick={(e) => {
               e.stopPropagation();
@@ -416,7 +425,7 @@ function TopicCard({
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 rounded-full hover:bg-white/60 shrink-0"
+                    className="h-6 w-6 rounded-full hover:bg-white/60 shrink-0 z-20 relative"
                     onClick={(e) => {
                       e.stopPropagation();
                       onRemove(sub.id);
@@ -428,7 +437,7 @@ function TopicCard({
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-6 w-6 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0"
+                    className="h-6 w-6 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0 z-20 relative"
                     disabled={full}
                     onClick={(e) => {
                       e.stopPropagation();
