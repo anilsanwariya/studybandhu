@@ -21,6 +21,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -38,7 +39,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ChevronRight,
   RotateCcw,
   Link as LinkIcon,
   StickyNote,
@@ -195,13 +195,11 @@ function SyllabusPage() {
         </div>
       </div>
 
-      <div className="glass-strong rounded-3xl p-3 sm:p-4 lg:p-6">
-        <div className="overflow-x-auto -mx-1 px-1">
-          <div className="space-y-2 min-w-[320px]">
-            {scopedTree.map((node) => (
-              <TreeNode key={node.id} node={node} depth={0} onOpen={setOpenId} onEdit={setEdit} />
-            ))}
-          </div>
+      <div className="glass-strong rounded-3xl p-3 sm:p-4 lg:p-6 mb-10">
+        <div className="space-y-3 min-w-0">
+          {scopedTree.map((node) => (
+            <TreeNode key={node.id} node={node} depth={0} onOpen={setOpenId} onEdit={setEdit} />
+          ))}
         </div>
       </div>
 
@@ -234,7 +232,7 @@ function TreeNode({
   const childType = CHILD_TYPE[node.depth];
   const canAddChild = childType !== null;
   const isUserNode = node.kind === "user";
-  const canHide = node.kind === "admin" && node.depth > 0; // subjects can't be hidden
+  const canHide = node.kind === "admin" && node.depth > 0;
 
   const handleAddChild = () => {
     if (!childType) return;
@@ -267,68 +265,61 @@ function TreeNode({
   };
 
   return (
-    <div>
+    <div
+      className={cn(
+        "flex flex-col transition-all min-w-0",
+        depth === 0 ? "glass rounded-2xl shadow-sm" : "bg-white/40 border border-white/30 rounded-xl shadow-sm mb-2",
+        node.excluded && "opacity-60",
+        node.hidden && "opacity-50",
+      )}
+    >
+      {/* Main Card Row */}
       <div
         onClick={() => {
           if (hasChildren) setExpanded((e) => !e);
         }}
         className={cn(
-          "group flex items-start gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all min-w-0 select-none",
-          hasChildren ? "hover:bg-white/50 cursor-pointer" : "hover:bg-white/30",
-          node.excluded && "opacity-40",
-          node.hidden && "opacity-50",
+          "flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-3.5 min-w-0 select-none",
+          hasChildren && "cursor-pointer hover:bg-white/30",
+          hasChildren && expanded ? "rounded-t-2xl" : "rounded-2xl",
         )}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
-        {/* Chevron */}
-        {hasChildren ? (
-          <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-            <ChevronRight
-              className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-90")}
-            />
-          </div>
-        ) : (
-          <span className="h-6 w-6 shrink-0" />
-        )}
-
         {/* Status Dot (Clickable shortcut to open drawer) */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onOpen(node.id);
           }}
-          className="mt-1.5 shrink-0 hover:scale-110 transition-transform cursor-pointer"
+          className="pt-0.5 shrink-0 hover:scale-110 transition-transform cursor-pointer"
           title="Manage Progress & Links"
         >
           <StatusDot status={node.status} />
         </button>
 
-        {/* Title (Clicking this expands/collapses the row) */}
-        <div
-          className={cn(
-            "flex-1 text-sm min-w-0 break-words pt-0.5",
-            node.depth === 0 && "font-semibold text-base",
-            node.depth === 1 && "font-medium",
-            node.excluded && "line-through",
-          )}
-        >
-          {node.title}
-          {isUserNode && (
-            <span className="inline-flex items-center gap-1 ml-2 text-[9px] uppercase tracking-wider bg-lavender/60 text-foreground/70 rounded-full px-1.5 py-0.5 align-middle">
-              <Sparkles className="h-2.5 w-2.5" /> yours
-            </span>
-          )}
-          {node.hidden && (
-            <span className="ml-2 text-[9px] uppercase tracking-wider bg-white/60 text-muted-foreground rounded-full px-1.5 py-0.5 align-middle">
-              hidden
-            </span>
-          )}
+        {/* Title & Meta */}
+        <div className="flex-1 min-w-0">
+          <div
+            className={cn(
+              "font-semibold break-words leading-tight",
+              depth === 0 ? "text-base" : "text-sm",
+              node.excluded && "line-through",
+            )}
+          >
+            {node.title}
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 truncate">
+            <span className="uppercase tracking-wider font-medium">{node.type}</span>
+            {hasChildren && <span>• {node.children!.length} items</span>}
+            {isUserNode && (
+              <span className="inline-flex items-center gap-0.5 bg-lavender/60 text-foreground/70 rounded-full px-1.5 py-0.5">
+                <Sparkles className="h-2.5 w-2.5" /> yours
+              </span>
+            )}
+            {node.hidden && (
+              <span className="bg-white/60 text-muted-foreground rounded-full px-1.5 py-0.5">hidden</span>
+            )}
+          </div>
         </div>
-
-        {/* Type Badge (Hidden on mobile) */}
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity self-center hidden sm:inline-block pt-1">
-          {node.type}
-        </span>
 
         {/* Clean Dropdown Actions Menu */}
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -431,12 +422,14 @@ function TreeNode({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Children Tree rendering */}
+      {/* Children Nesting Area */}
       {hasChildren && expanded && (
-        <div className="space-y-1 mt-1">
-          {node.children!.map((child) => (
-            <TreeNode key={child.id} node={child} depth={depth + 1} onOpen={onOpen} onEdit={onEdit} />
-          ))}
+        <div className={cn("px-2 pb-2 sm:px-3 sm:pb-3", depth === 0 && "pt-2 border-t border-white/20")}>
+          <div className="pl-2 sm:pl-3 border-l-2 border-white/40 pt-1 ml-1 sm:ml-2">
+            {node.children!.map((child) => (
+              <TreeNode key={child.id} node={child} depth={depth + 1} onOpen={onOpen} onEdit={onEdit} />
+            ))}
+          </div>
         </div>
       )}
     </div>
