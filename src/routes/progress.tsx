@@ -71,6 +71,39 @@ const THEME_COLORS = [
   }, // Pink
 ];
 
+// Extend the node type to carry its parent context in a flat list
+type FlatTopic = SyllabusNode & {
+  subjectId?: string;
+  subjectTitle?: string;
+  chapterId?: string;
+  chapterTitle?: string;
+};
+
+// Flattens the hierarchical tree into a single array of just topics (depth 2)
+function extractFlatTopics(
+  nodes: SyllabusNode[],
+  currentSubj?: { id: string; title: string },
+  currentChap?: { id: string; title: string },
+): FlatTopic[] {
+  let result: FlatTopic[] = [];
+  for (const n of nodes) {
+    if (n.depth === 0) {
+      result.push(...extractFlatTopics(n.children || [], { id: n.id, title: n.title }, currentChap));
+    } else if (n.depth === 1) {
+      result.push(...extractFlatTopics(n.children || [], currentSubj, { id: n.id, title: n.title }));
+    } else if (n.depth === 2) {
+      result.push({
+        ...n,
+        subjectId: currentSubj?.id,
+        subjectTitle: currentSubj?.title,
+        chapterId: currentChap?.id,
+        chapterTitle: currentChap?.title,
+      });
+    }
+  }
+  return result;
+}
+
 interface SubjectStat {
   id: string;
   title: string;
@@ -166,23 +199,16 @@ function ProgressPage() {
     return subj.flatMap((s) => (s.children ?? []).map((c) => ({ id: c.id, title: c.title })));
   }, [tree, subjectFilter]);
 
-  // Filtered Tree for Topic Mastery
-  const scopedTree: SyllabusNode[] = useMemo(() => {
-    const walk = (list: SyllabusNode[]): SyllabusNode[] => {
-      const out: SyllabusNode[] = [];
-      for (const n of list) {
-        if (subjectFilter !== "all" && n.depth === 0 && n.id !== subjectFilter) continue;
-        if (chapterFilter !== "all" && n.depth === 1 && n.id !== chapterFilter) continue;
-        const kids = n.children ? walk(n.children) : undefined;
-        // Don't show branches that are empty after filtering
-        if ((subjectFilter !== "all" || chapterFilter !== "all") && n.depth < 2 && (!kids || kids.length === 0))
-          continue;
-        out.push({ ...n, children: kids });
-      }
-      return out;
-    };
-    return walk(tree);
-  }, [tree, subjectFilter, chapterFilter]);
+  // Create a flattened list of all topics and filter them
+  const allFlatTopics = useMemo(() => extractFlatTopics(tree), [tree]);
+
+  const filteredTopics = useMemo(() => {
+    return allFlatTopics.filter((t) => {
+      const matchSubject = subjectFilter === "all" || t.subjectId === subjectFilter;
+      const matchChapter = chapterFilter === "all" || t.chapterId === chapterFilter;
+      return matchSubject && matchChapter;
+    });
+  }, [allFlatTopics, subjectFilter, chapterFilter]);
 
   return (
     <AppShell>
@@ -296,9 +322,12 @@ function ProgressPage() {
             <h2 className="font-semibold">Topic Mastery & Revisions</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Track your individual topic levels.</p>
           </div>
+          <span className="glass rounded-full text-xs font-medium px-3 py-1">
+            {filteredTopics.length} {filteredTopics.length === 1 ? "topic" : "topics"}
+          </span>
         </div>
 
-        {/* Dynamic Filters */}
+        {/* Dynamic Filters - MorningIntent Style */}
         <div className="glass rounded-xl p-1.5 mb-5 flex flex-nowrap items-center gap-2">
           <Select
             value={subjectFilter}
@@ -357,107 +386,76 @@ function ProgressPage() {
           )}
         </div>
 
-        <div className="w-full min-w-0 space-y-4">
-          {scopedTree.map((n, index) => {
-            // Find its original subject index to maintain accurate color mapping
-            const originalIndex = tree.findIndex((s) => s.id === n.id);
-            const themeIdx = originalIndex >= 0 ? originalIndex : index;
-            return <MasteryTreeNode key={n.id} node={n} depth={0} themeIndex={themeIdx} />;
-          })}
+        {/* Flat List Rendering */}
+        <div className="w-full min-w-0 space-y-2">
+          {filteredTopics.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted-foreground">No topics found.</div>
+          ) : (
+            filteredTopics.map((topic) => <MasteryTopicCard key={topic.id} topic={topic} tree={tree} />)
+          )}
         </div>
       </div>
     </AppShell>
   );
 }
 
-function MasteryTreeNode({ node, depth, themeIndex }: { node: SyllabusNode; depth: number; themeIndex: number }) {
-  const [open, setOpen] = useState(depth < 1);
-  const theme = THEME_COLORS[themeIndex % THEME_COLORS.length];
+function MasteryTopicCard({ topic, tree }: { topic: FlatTopic; tree: SyllabusNode[] }) {
+  // Find the subject index to consistently assign a theme color
+  const subjectIndex = tree.findIndex((s) => s.id === topic.subjectId);
+  const theme = THEME_COLORS[Math.max(0, subjectIndex) % THEME_COLORS.length];
 
-  const hasChildren = !!node.children && node.children.length > 0;
-  const isLeaf = !hasChildren;
-  const b = isLeaf ? masteryBadge(node.status, node.revisionCount ?? 0) : null;
+  const b = masteryBadge(topic.status, topic.revisionCount ?? 0);
 
   return (
-    <div className={cn("flex flex-col w-full min-w-0 transition-all", depth === 0 ? "mb-4" : "mb-2")}>
-      {/* Main Elevated Card */}
-      <div
-        onClick={() => {
-          if (hasChildren) setOpen((o) => !o);
-        }}
-        className={cn(
-          "flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 py-3 sm:px-4 sm:py-3.5 rounded-2xl relative z-10 w-full transition-all",
-          depth === 0 ? "shadow-md backdrop-blur-md" : "shadow-sm backdrop-blur-sm",
-          hasChildren && "cursor-pointer hover:brightness-105",
-          node.excluded && "opacity-60",
-        )}
-        style={{
-          backgroundColor: depth === 0 ? theme.parent : "rgba(255, 255, 255, 0.7)",
-          border: `1px solid ${depth === 0 ? theme.border : "rgba(255, 255, 255, 0.5)"}`,
-        }}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-1.5 text-foreground/70">
-            <span
-              className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-bold"
-              style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
-            >
-              {node.type}
-            </span>
-            {hasChildren && <span className="text-[10px] font-medium">• {node.children!.length} items</span>}
-            {node.excluded && (
-              <span className="bg-slate-200/80 text-slate-600 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
-                excluded
-              </span>
-            )}
-          </div>
-
-          <div
-            className={cn(
-              "font-medium break-words leading-snug text-foreground/90",
-              depth === 0 ? "text-base font-semibold" : "text-sm",
-              node.excluded && "line-through text-muted-foreground",
-            )}
+    <div
+      className={cn(
+        "flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 py-3 sm:px-4 sm:py-3.5 rounded-2xl relative z-10 w-full transition-all shadow-sm backdrop-blur-sm",
+        topic.excluded && "opacity-60 grayscale-[0.5]",
+      )}
+      style={{
+        backgroundColor: theme.child,
+        border: `1px solid ${theme.border}`,
+      }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5 mb-1 text-foreground/70">
+          <span
+            className="px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-bold"
+            style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
           >
-            {node.title}
-          </div>
+            {topic.type}
+          </span>
+          {topic.excluded && (
+            <span className="bg-slate-200/80 text-slate-600 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
+              excluded
+            </span>
+          )}
         </div>
 
-        {/* Leaf Details (Right aligned on desktop, bottom stacked on mobile) */}
-        {isLeaf && (
-          <div className="flex flex-wrap items-center sm:justify-end gap-2 text-[11px] text-muted-foreground shrink-0 bg-white/40 p-2 rounded-xl border border-white/40 w-full sm:w-auto">
-            {b && (
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${b.cls}`}>
-                {b.label}
-              </span>
-            )}
-            <span className="bg-white/50 px-2 py-0.5 rounded-full font-medium">
-              Revs: <span className="text-foreground/80 font-bold">{node.revisionCount ?? 0}</span>
-            </span>
-            <span className="bg-white/50 px-2 py-0.5 rounded-full font-medium">
-              Due: <span className="text-foreground/80 font-bold">{nextDueLabel(node.nextRevisionAt)}</span>
-            </span>
-          </div>
-        )}
+        <div
+          className={cn(
+            "text-sm font-medium break-words leading-tight text-foreground/90",
+            topic.excluded && "line-through text-muted-foreground",
+          )}
+        >
+          {topic.title}
+        </div>
+        <div className="text-[10px] text-foreground/60 mt-1 truncate">
+          {topic.subjectTitle} {topic.chapterTitle ? ` • ${topic.chapterTitle}` : ""}
+        </div>
       </div>
 
-      {/* Inset Child Container */}
-      {hasChildren && open && (
-        <div
-          className="relative z-0 -mt-4 pt-6 pb-2 px-1 sm:px-2 rounded-b-3xl"
-          style={{
-            backgroundColor: depth === 0 ? theme.child : "rgba(255, 255, 255, 0.2)",
-            border: `1px solid ${depth === 0 ? theme.border : "rgba(255, 255, 255, 0.3)"}`,
-            borderTop: "none",
-          }}
-        >
-          <div className="flex flex-col space-y-2 mt-1">
-            {node.children!.map((c) => (
-              <MasteryTreeNode key={c.id} node={c} depth={depth + 1} themeIndex={themeIndex} />
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center sm:justify-end gap-2 text-[11px] text-muted-foreground shrink-0 bg-white/40 p-2 rounded-xl border border-white/40 w-full sm:w-auto">
+        {b && (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${b.cls}`}>{b.label}</span>
+        )}
+        <span className="bg-white/50 px-2 py-0.5 rounded-full font-medium">
+          Revs: <span className="text-foreground/80 font-bold">{topic.revisionCount ?? 0}</span>
+        </span>
+        <span className="bg-white/50 px-2 py-0.5 rounded-full font-medium">
+          Due: <span className="text-foreground/80 font-bold">{nextDueLabel(topic.nextRevisionAt)}</span>
+        </span>
+      </div>
     </div>
   );
 }
