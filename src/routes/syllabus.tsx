@@ -71,13 +71,33 @@ const CHILD_TYPE: Record<number, NodeType | null> = {
   3: null,
 };
 
-// Hardcoded inline RGBA to guarantee color grading works regardless of tailwind config
-const THEME_COLORS = [
-  { parent: "rgba(147, 197, 253, 0.4)", child: "rgba(147, 197, 253, 0.15)", border: "rgba(147, 197, 253, 0.6)" }, // Blue
-  { parent: "rgba(110, 231, 183, 0.4)", child: "rgba(110, 231, 183, 0.15)", border: "rgba(110, 231, 183, 0.6)" }, // Emerald
-  { parent: "rgba(216, 180, 254, 0.4)", child: "rgba(216, 180, 254, 0.15)", border: "rgba(216, 180, 254, 0.6)" }, // Purple
-  { parent: "rgba(253, 186, 116, 0.4)", child: "rgba(253, 186, 116, 0.15)", border: "rgba(253, 186, 116, 0.6)" }, // Orange
-  { parent: "rgba(249, 168, 212, 0.4)", child: "rgba(249, 168, 212, 0.15)", border: "rgba(249, 168, 212, 0.6)" }, // Pink
+// Define 5 distinct pastel themes for subject grouping
+const THEMES = [
+  {
+    parent: "bg-blue-100/80 border-blue-200/80 shadow-md z-10",
+    child: "bg-blue-50/50 border-blue-100/50 shadow-sm hover:bg-blue-100/40 z-0",
+    badge: "bg-blue-200/70 text-blue-800",
+  },
+  {
+    parent: "bg-emerald-100/80 border-emerald-200/80 shadow-md z-10",
+    child: "bg-emerald-50/50 border-emerald-100/50 shadow-sm hover:bg-emerald-100/40 z-0",
+    badge: "bg-emerald-200/70 text-emerald-800",
+  },
+  {
+    parent: "bg-purple-100/80 border-purple-200/80 shadow-md z-10",
+    child: "bg-purple-50/50 border-purple-100/50 shadow-sm hover:bg-purple-100/40 z-0",
+    badge: "bg-purple-200/70 text-purple-800",
+  },
+  {
+    parent: "bg-orange-100/80 border-orange-200/80 shadow-md z-10",
+    child: "bg-orange-50/50 border-orange-100/50 shadow-sm hover:bg-orange-100/40 z-0",
+    badge: "bg-orange-200/70 text-orange-900",
+  },
+  {
+    parent: "bg-pink-100/80 border-pink-200/80 shadow-md z-10",
+    child: "bg-pink-50/50 border-pink-100/50 shadow-sm hover:bg-pink-100/40 z-0",
+    badge: "bg-pink-200/70 text-pink-800",
+  },
 ];
 
 type NodeEdit =
@@ -135,6 +155,7 @@ function SyllabusPage() {
       </div>
 
       <div className="glass rounded-2xl p-2 mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* Dropdowns row */}
         <div className="flex flex-nowrap items-center gap-2 w-full sm:w-auto flex-1 min-w-0">
           <Select
             value={subjectFilter}
@@ -193,6 +214,7 @@ function SyllabusPage() {
           )}
         </div>
 
+        {/* Toggle row */}
         <div className="flex items-center justify-end gap-2 text-xs shrink-0 px-2 sm:px-0">
           <Switch checked={showHidden} onCheckedChange={setShowHidden} id="show-hidden" />
           <Label htmlFor="show-hidden" className="text-xs font-medium cursor-pointer">
@@ -201,8 +223,8 @@ function SyllabusPage() {
         </div>
       </div>
 
-      <div className="mb-10 w-full min-w-0">
-        <div className="space-y-4 w-full">
+      <div className="glass-strong rounded-3xl p-3 sm:p-4 lg:p-6 mb-10">
+        <div className="space-y-4 min-w-0">
           {scopedTree.map((node, index) => (
             <TreeNode key={node.id} node={node} depth={0} themeIndex={index} onOpen={setOpenId} onEdit={setEdit} />
           ))}
@@ -232,7 +254,8 @@ function TreeNode({
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const theme = THEME_COLORS[themeIndex % THEME_COLORS.length];
+  const theme = THEMES[themeIndex % THEMES.length];
+  const isParent = depth === 0;
 
   const hasChildren = node.children && node.children.length > 0;
   const { resetNode, refreshUserOverrides } = useStore();
@@ -275,27 +298,21 @@ function TreeNode({
   };
 
   return (
-    <div className={cn("flex flex-col w-full min-w-0 transition-all", depth === 0 ? "mb-4" : "mb-2")}>
-      
-      {/* The Main Elevated Card */}
+    <div className="flex flex-col w-full min-w-0">
+      {/* The Main Card */}
       <div
         onClick={() => {
           if (hasChildren) setExpanded((e) => !e);
         }}
         className={cn(
-          "flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-3.5 rounded-2xl relative z-10 w-full transition-all",
-          depth === 0 ? "shadow-md backdrop-blur-md" : "shadow-sm backdrop-blur-sm",
-          hasChildren && "cursor-pointer hover:brightness-105",
+          "flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-3.5 min-w-0 select-none border transition-all rounded-2xl relative",
+          isParent ? theme.parent : theme.child,
+          hasChildren && "cursor-pointer",
           node.excluded && "opacity-60",
           node.hidden && "opacity-50"
         )}
-        style={{
-          // Depth 0 (Subject) gets strong theme color. Deeper cards get frosted white that blends with the container behind it.
-          backgroundColor: depth === 0 ? theme.parent : "rgba(255, 255, 255, 0.6)",
-          border: `1px solid ${depth === 0 ? theme.border : "rgba(255, 255, 255, 0.5)"}`
-        }}
       >
-        {/* Status Dot Shortcut */}
+        {/* Status Dot (Clickable shortcut to open drawer) */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -309,16 +326,18 @@ function TreeNode({
 
         {/* Title & Meta Data */}
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-1 text-foreground/70">
-            <span className="text-[10px] uppercase tracking-wider font-bold">{node.type}</span>
-            {hasChildren && <span className="text-[10px] font-medium">• {node.children!.length} items</span>}
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-bold", theme.badge)}>
+              {node.type}
+            </span>
+            {hasChildren && <span className="text-[11px] text-muted-foreground font-medium">• {node.children!.length} items</span>}
             {isUserNode && (
-              <span className="inline-flex items-center gap-0.5 bg-lavender/60 text-foreground/80 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
-                <Sparkles className="h-2 w-2" /> yours
+              <span className="inline-flex items-center gap-0.5 bg-lavender/60 text-foreground/70 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                <Sparkles className="h-2.5 w-2.5" /> yours
               </span>
             )}
             {node.hidden && (
-              <span className="bg-white/60 text-muted-foreground rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
+              <span className="bg-white/60 text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
                 hidden
               </span>
             )}
@@ -326,7 +345,7 @@ function TreeNode({
           
           <div
             className={cn(
-              "font-medium break-words leading-snug text-foreground/90",
+              "font-medium break-words leading-snug",
               depth === 0 ? "text-base font-semibold" : "text-sm",
               node.excluded && "line-through text-muted-foreground"
             )}
@@ -344,30 +363,38 @@ function TreeNode({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 glass-strong z-50">
+              
               <DropdownMenuItem onClick={() => onOpen(node.id)} className="font-medium cursor-pointer">
                 <FileText className="mr-2 h-4 w-4" /> Manage Progress & Links
               </DropdownMenuItem>
+              
               <DropdownMenuSeparator />
+
               {canAddChild && (
                 <DropdownMenuItem onClick={() => handleAddChild()} className="cursor-pointer">
                   <Plus className="mr-2 h-4 w-4" /> Add {childType}
                 </DropdownMenuItem>
               )}
+
               {isUserNode && (
                 <DropdownMenuItem onClick={() => onEdit({ mode: "edit", node })} className="cursor-pointer">
                   <Pencil className="mr-2 h-4 w-4" /> Rename
                 </DropdownMenuItem>
               )}
+
               {canHide && (
                 <DropdownMenuItem onClick={() => handleToggleHidden()} className="cursor-pointer">
                   {node.hidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
                   {node.hidden ? "Unhide" : "Hide from syllabus"}
                 </DropdownMenuItem>
               )}
+
               <DropdownMenuSeparator />
+
               <DropdownMenuItem onClick={() => setResetDialogOpen(true)} className="text-orange-600 focus:text-orange-700 focus:bg-orange-50 cursor-pointer">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset Progress
               </DropdownMenuItem>
+
               {isUserNode && (
                 <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)} className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer">
                   <Trash2 className="mr-2 h-4 w-4" /> Delete Node
@@ -378,7 +405,7 @@ function TreeNode({
         </div>
       </div>
 
-      {/* Alert Dialogs rendered outside dropdown menu to preserve click events */}
+      {/* Render Alert Dialogs outside of the DropdownMenu to prevent focus loss bugs */}
       <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <AlertDialogContent className="glass-strong z-[100]">
           <AlertDialogHeader>
@@ -420,22 +447,19 @@ function TreeNode({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Inset Child Container (Tucks underneath parent for elevated stacked look) */}
+      {/* Flattened Nested Children (Starts from left edge, spacing vertically) */}
       {hasChildren && expanded && (
-        <div 
-          className="relative z-0 -mt-4 pt-6 pb-2 px-1 sm:px-2 rounded-b-3xl"
-          style={{
-            // Subjects (depth 0) tint their child containers. Deeper containers use translucent white.
-            backgroundColor: depth === 0 ? theme.child : "rgba(255, 255, 255, 0.2)",
-            border: `1px solid ${depth === 0 ? theme.border : "rgba(255, 255, 255, 0.3)"}`,
-            borderTop: "none"
-          }}
-        >
-          <div className="flex flex-col space-y-2 mt-1">
-            {node.children!.map((child) => (
-              <TreeNode key={child.id} node={child} depth={depth + 1} themeIndex={themeIndex} onOpen={onOpen} onEdit={onEdit} />
-            ))}
-          </div>
+        <div className="flex flex-col space-y-1.5 mt-1.5 w-full">
+          {node.children!.map((child) => (
+            <TreeNode 
+              key={child.id} 
+              node={child} 
+              depth={depth + 1} 
+              themeIndex={themeIndex} 
+              onOpen={onOpen} 
+              onEdit={onEdit} 
+            />
+          ))}
         </div>
       )}
     </div>
@@ -493,7 +517,15 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { setTitle(""); onClose(); } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setTitle("");
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="glass-strong z-[100]">
         <DialogHeader>
           <DialogTitle>
@@ -508,19 +540,30 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="node-title" className="text-xs">Title</Label>
+          <Label htmlFor="node-title" className="text-xs">
+            Title
+          </Label>
           <Input
             id="node-title"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !saving) handleSave(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !saving) handleSave();
+            }}
             placeholder={edit?.mode === "add" ? `New ${edit.childType}` : "Title"}
             className="bg-white/60 border-white/60 rounded-xl"
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" className="rounded-full" onClick={() => { setTitle(""); onClose(); }}>
+          <Button
+            variant="outline"
+            className="rounded-full"
+            onClick={() => {
+              setTitle("");
+              onClose();
+            }}
+          >
             Cancel
           </Button>
           <Button className="rounded-full" onClick={handleSave} disabled={saving || !title.trim()}>
@@ -552,7 +595,9 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
 
             <div className="px-1 space-y-5 mt-6">
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs"><LinkIcon className="h-3.5 w-3.5" /> Reference URL</Label>
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <LinkIcon className="h-3.5 w-3.5" /> Reference URL
+                </Label>
                 <Input
                   placeholder="https://…"
                   value={node.url ?? ""}
@@ -562,7 +607,9 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
               </div>
 
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5 text-xs"><StickyNote className="h-3.5 w-3.5" /> Reference note</Label>
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <StickyNote className="h-3.5 w-3.5" /> Reference note
+                </Label>
                 <Input
                   placeholder="e.g. Laxmikanth, Ch. 4"
                   value={node.note ?? ""}
