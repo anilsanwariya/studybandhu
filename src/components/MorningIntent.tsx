@@ -91,7 +91,7 @@ export function MorningIntent() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto w-full relative">
+      <div className="max-w-2xl mx-auto w-full relative px-2 sm:px-0">
         {/* Quote banner */}
         <div className="glass rounded-3xl px-4 py-3 flex items-start gap-3 mb-5">
           <div className="h-8 w-8 rounded-full bg-lavender/70 flex items-center justify-center shrink-0 mt-0.5">
@@ -167,16 +167,17 @@ export function MorningIntent() {
         )}
 
         {/* Main Focused Carousel Card */}
-        <section className="relative glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[65vh] lg:h-[calc(100vh-18rem)] overflow-hidden">
-          {/* Centered Transparent Navigation Arrows */}
+        {/* Note: overflow-hidden removed so half-out buttons aren't clipped */}
+        <section className="relative glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[65vh] lg:h-[calc(100vh-18rem)]">
+          {/* Half-in, Half-out Navigation Arrows */}
           {paneIdx > 0 && (
             <Button
               size="icon"
               variant="ghost"
-              className="absolute left-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-full bg-transparent hover:bg-white/30 z-20 transition-colors"
+              className="absolute -left-5 sm:-left-6 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-white/40 backdrop-blur-md border border-white/50 shadow-md hover:bg-white/60 z-30 transition-all flex items-center justify-center"
               onClick={() => setPaneIdx((p) => Math.max(0, p - 1) as 0 | 1 | 2)}
             >
-              <ChevronLeft className="h-8 w-8 text-slate-600/70" />
+              <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6 text-slate-700 ml-[-2px]" />
             </Button>
           )}
 
@@ -184,10 +185,10 @@ export function MorningIntent() {
             <Button
               size="icon"
               variant="ghost"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-12 w-10 rounded-full bg-transparent hover:bg-white/30 z-20 transition-colors"
+              className="absolute -right-5 sm:-right-6 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-white/40 backdrop-blur-md border border-white/50 shadow-md hover:bg-white/60 z-30 transition-all flex items-center justify-center"
               onClick={() => setPaneIdx((p) => Math.min(2, p + 1) as 0 | 1 | 2)}
             >
-              <ChevronRight className="h-8 w-8 text-slate-600/70" />
+              <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6 text-slate-700 mr-[-2px]" />
             </Button>
           )}
 
@@ -203,7 +204,7 @@ export function MorningIntent() {
 
           {/* New Topics Pane */}
           {paneIdx === 0 && (
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-4 sm:px-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-2 sm:px-4">
               <TopicList
                 topics={newTopics}
                 bucket={bucket}
@@ -216,7 +217,7 @@ export function MorningIntent() {
 
           {/* Due Topics Pane */}
           {paneIdx === 1 && (
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-4 sm:px-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1 z-10 px-2 sm:px-4">
               <TopicList
                 topics={dueTopics}
                 bucket={bucket}
@@ -229,7 +230,7 @@ export function MorningIntent() {
 
           {/* Today's Bucket Pane */}
           {paneIdx === 2 && (
-            <div className="flex-1 min-h-0 flex flex-col z-10 px-4 sm:px-6">
+            <div className="flex-1 min-h-0 flex flex-col z-10 px-2 sm:px-4">
               <div className="mb-4 shrink-0">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium">Ready to focus?</span>
