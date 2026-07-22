@@ -8,55 +8,42 @@ import type { SyllabusNode } from "@/lib/mock-syllabus";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Minus, Quote, Play, Inbox, CalendarClock, ChevronRight, Filter } from "lucide-react";
+import { Plus, Minus, Quote, Play, Inbox, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type LeafPredicate = (n: SyllabusNode) => boolean;
+// Extend the node type to carry its parent context in a flat list
+type FlatTopic = SyllabusNode & {
+  subjectId?: string;
+  subjectTitle?: string;
+  chapterId?: string;
+  chapterTitle?: string;
+};
 
-function isTopicLeaf(n: SyllabusNode) {
-  return n.depth === 2;
-}
-
-function filterTree(nodes: SyllabusNode[], keep: LeafPredicate): SyllabusNode[] {
-  const out: SyllabusNode[] = [];
+// Flattens the hierarchical tree into a single array of just topics (depth 2)
+function extractFlatTopics(
+  nodes: SyllabusNode[],
+  currentSubj?: { id: string; title: string },
+  currentChap?: { id: string; title: string },
+): FlatTopic[] {
+  let result: FlatTopic[] = [];
   for (const n of nodes) {
-    if (isTopicLeaf(n)) {
-      if (keep(n) && !n.excluded) out.push({ ...n, children: undefined });
-    } else if (n.children && n.children.length > 0) {
-      const kids = filterTree(n.children, keep);
-      if (kids.length > 0) out.push({ ...n, children: kids });
+    if (n.excluded) continue;
+
+    if (n.depth === 0) {
+      result.push(...extractFlatTopics(n.children || [], { id: n.id, title: n.title }, currentChap));
+    } else if (n.depth === 1) {
+      result.push(...extractFlatTopics(n.children || [], currentSubj, { id: n.id, title: n.title }));
+    } else if (n.depth === 2) {
+      result.push({
+        ...n,
+        subjectId: currentSubj?.id,
+        subjectTitle: currentSubj?.title,
+        chapterId: currentChap?.id,
+        chapterTitle: currentChap?.title,
+      });
     }
   }
-  return out;
-}
-
-function countLeaves(nodes: SyllabusNode[]): number {
-  let c = 0;
-  for (const n of nodes) {
-    if (isTopicLeaf(n)) c += 1;
-    else if (n.children) c += countLeaves(n.children);
-  }
-  return c;
-}
-
-/** Prune tree to only the branch(es) rooted at subjectId / containing chapterId. */
-function scopeTree(nodes: SyllabusNode[], subjectId: string, chapterId: string): SyllabusNode[] {
-  if (subjectId === "all" && chapterId === "all") return nodes;
-  const walk = (list: SyllabusNode[]): SyllabusNode[] => {
-    const out: SyllabusNode[] = [];
-    for (const n of list) {
-      if (subjectId !== "all" && n.depth === 0 && n.id !== subjectId) continue;
-      if (chapterId !== "all" && n.depth === 1 && n.id !== chapterId) continue;
-      const kids = n.children ? walk(n.children) : undefined;
-      if ((chapterId !== "all" || subjectId !== "all") && n.depth < 1 && (!kids || kids.length === 0)) {
-        // No matching descendants under this branch.
-        continue;
-      }
-      out.push({ ...n, children: kids });
-    }
-    return out;
-  };
-  return walk(nodes);
+  return result;
 }
 
 export function MorningIntent() {
@@ -66,23 +53,37 @@ export function MorningIntent() {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [chapterFilter, setChapterFilter] = useState("all");
 
+  // Extract subjects and chapters for the dropdowns
   const subjects = useMemo(() => tree.map((n) => ({ id: n.id, title: n.title })), [tree]);
   const chapters = useMemo(() => {
     const subj = subjectFilter === "all" ? tree : tree.filter((n) => n.id === subjectFilter);
     return subj.flatMap((s) => (s.children ?? []).map((c) => ({ id: c.id, title: c.title })));
   }, [tree, subjectFilter]);
 
-  const scopedTree = useMemo(() => scopeTree(tree, subjectFilter, chapterFilter), [tree, subjectFilter, chapterFilter]);
+  // Create a flattened list of all available topics, carrying their subject/chapter context
+  const allFlatTopics = useMemo(() => extractFlatTopics(tree), [tree]);
 
-  const newTree = useMemo(() => filterTree(scopedTree, (n) => n.status === "unread"), [scopedTree]);
-  const dueTree = useMemo(() => filterTree(scopedTree, (n) => !!n.dueToday && n.status !== "unread"), [scopedTree]);
-  const newCount = useMemo(() => countLeaves(newTree), [newTree]);
-  const dueCount = useMemo(() => countLeaves(dueTree), [dueTree]);
+  // Apply the dropdown selections directly to the flattened list
+  const filteredTopics = useMemo(() => {
+    return allFlatTopics.filter((t) => {
+      const matchSubject = subjectFilter === "all" || t.subjectId === subjectFilter;
+      const matchChapter = chapterFilter === "all" || t.chapterId === chapterFilter;
+      return matchSubject && matchChapter;
+    });
+  }, [allFlatTopics, subjectFilter, chapterFilter]);
+
+  // Separate into New and Due lists
+  const newTopics = useMemo(() => filteredTopics.filter((t) => t.status === "unread"), [filteredTopics]);
+  const dueTopics = useMemo(
+    () => filteredTopics.filter((t) => !!t.dueToday && t.status !== "unread"),
+    [filteredTopics],
+  );
+
   const full = bucket.length >= dailyLimit;
 
   return (
     <AppShell>
-      {/* Quote banner — wraps freely */}
+      {/* Quote banner */}
       <div className="glass rounded-3xl px-4 py-3 flex items-start gap-3 mb-5">
         <div className="h-8 w-8 rounded-full bg-lavender/70 flex items-center justify-center shrink-0 mt-0.5">
           <Quote className="h-4 w-4 text-foreground/70" />
@@ -95,11 +96,8 @@ export function MorningIntent() {
         <p className="text-muted-foreground mt-1 text-sm sm:text-base">Choose what today looks like — gently.</p>
       </header>
 
-      {/* Filters */}
-      <div className="glass rounded-2xl p-3 mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-1">
-          <Filter className="h-3.5 w-3.5" /> Filter
-        </div>
+      {/* Selectors - Adjusted for a single line on mobile */}
+      <div className="glass rounded-2xl p-2 mb-4 flex flex-nowrap items-center gap-2">
         <Select
           value={subjectFilter}
           onValueChange={(v) => {
@@ -107,11 +105,11 @@ export function MorningIntent() {
             setChapterFilter("all");
           }}
         >
-          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 w-auto min-w-[10rem] text-sm">
+          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 flex-1 min-w-0 text-sm">
             <SelectValue placeholder="Subject" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All subjects</SelectItem>
+            <SelectItem value="all">All Subjects</SelectItem>
             {subjects.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.title}
@@ -119,12 +117,13 @@ export function MorningIntent() {
             ))}
           </SelectContent>
         </Select>
+
         <Select value={chapterFilter} onValueChange={setChapterFilter} disabled={chapters.length === 0}>
-          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 w-auto min-w-[10rem] text-sm">
+          <SelectTrigger className="h-9 rounded-full bg-white/70 border-white/60 flex-1 min-w-0 text-sm">
             <SelectValue placeholder="Chapter" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All chapters</SelectItem>
+            <SelectItem value="all">All Chapters</SelectItem>
             {chapters.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.title}
@@ -132,11 +131,12 @@ export function MorningIntent() {
             ))}
           </SelectContent>
         </Select>
+
         {(subjectFilter !== "all" || chapterFilter !== "all") && (
           <Button
             size="sm"
             variant="ghost"
-            className="rounded-full h-8 text-xs"
+            className="rounded-full h-9 px-3 text-xs shrink-0"
             onClick={() => {
               setSubjectFilter("all");
               setChapterFilter("all");
@@ -153,7 +153,7 @@ export function MorningIntent() {
           <div className="flex items-start justify-between mb-3 gap-3 min-w-0">
             <div className="min-w-0">
               <h2 className="font-semibold text-base sm:text-lg">The Bank</h2>
-              <p className="text-xs text-muted-foreground">Your syllabus, ready when you are.</p>
+              <p className="text-xs text-muted-foreground">Your syllabus topics, ready when you are.</p>
             </div>
           </div>
 
@@ -164,22 +164,34 @@ export function MorningIntent() {
                 className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 text-xs sm:text-sm"
               >
                 <Inbox className="h-3.5 w-3.5" /> New
-                <span className="opacity-60">{newCount}</span>
+                <span className="opacity-60">{newTopics.length}</span>
               </TabsTrigger>
               <TabsTrigger
                 value="due"
                 className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm gap-1.5 text-xs sm:text-sm"
               >
                 <CalendarClock className="h-3.5 w-3.5" /> Due
-                <span className="opacity-60">{dueCount}</span>
+                <span className="opacity-60">{dueTopics.length}</span>
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="new" className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
-              <BankTree nodes={newTree} bucket={bucket} onAdd={addToBucket} onRemove={removeFromBucket} full={full} />
+              <TopicList
+                topics={newTopics}
+                bucket={bucket}
+                onAdd={addToBucket}
+                onRemove={removeFromBucket}
+                full={full}
+              />
             </TabsContent>
             <TabsContent value="due" className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 -mr-1">
-              <BankTree nodes={dueTree} bucket={bucket} onAdd={addToBucket} onRemove={removeFromBucket} full={full} />
+              <TopicList
+                topics={dueTopics}
+                bucket={bucket}
+                onAdd={addToBucket}
+                onRemove={removeFromBucket}
+                full={full}
+              />
             </TabsContent>
           </Tabs>
         </section>
@@ -258,127 +270,90 @@ export function MorningIntent() {
   );
 }
 
-function BankTree({
-  nodes,
+// Renders the flat list of topics
+function TopicList({
+  topics,
   bucket,
   onAdd,
   onRemove,
   full,
 }: {
-  nodes: SyllabusNode[];
+  topics: FlatTopic[];
   bucket: string[];
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   full: boolean;
 }) {
-  if (nodes.length === 0) {
-    return <div className="text-center py-10 text-sm text-muted-foreground">Nothing here right now. Breathe.</div>;
+  if (topics.length === 0) {
+    return <div className="text-center py-10 text-sm text-muted-foreground">No topics found. Breathe.</div>;
   }
   return (
-    <div className="space-y-1">
-      {nodes.map((n) => (
-        <BankNode key={n.id} node={n} depth={0} bucket={bucket} onAdd={onAdd} onRemove={onRemove} full={full} />
+    <div className="space-y-2">
+      {topics.map((t) => (
+        <TopicCard key={t.id} topic={t} bucket={bucket} onAdd={onAdd} onRemove={onRemove} full={full} />
       ))}
     </div>
   );
 }
 
-function BankNode({
-  node,
-  depth,
+// Renders an individual, fully clickable Topic Card
+function TopicCard({
+  topic,
   bucket,
   onAdd,
   onRemove,
   full,
 }: {
-  node: SyllabusNode;
-  depth: number;
+  topic: FlatTopic;
   bucket: string[];
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   full: boolean;
 }) {
-  const [expanded, setExpanded] = useState(depth < 1);
-  const hasChildren = !!node.children && node.children.length > 0;
-  const inBucket = bucket.includes(node.id);
-  const leafCount = hasChildren ? countLeaves(node.children!) : 0;
+  const inBucket = bucket.includes(topic.id);
 
   return (
-    <div>
-      <div
-        onClick={() => {
-          if (hasChildren) setExpanded((e) => !e);
-        }}
-        className={cn(
-          "flex items-start gap-1.5 rounded-2xl px-2 py-2 transition-all min-w-0 select-none",
-          hasChildren ? "cursor-pointer hover:bg-white/40" : "glass",
-          inBucket && !hasChildren && "bg-white/70 border-primary/40",
-        )}
-        style={{ paddingLeft: `${depth * 12 + 6}px` }}
-      >
-        {hasChildren ? (
-          <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-            <ChevronRight
-              className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-90")}
-            />
-          </div>
-        ) : (
-          <span className="h-6 w-6 shrink-0 flex items-center justify-center mt-0.5">
-            <StatusDot status={node.status} />
-          </span>
-        )}
-        <div className="flex-1 min-w-0">
-          <div className={cn("text-sm break-words", depth === 0 && "font-semibold", depth === 1 && "font-medium")}>
-            {node.title}
-          </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground break-words">
-            {node.type}
-            {hasChildren ? ` · ${leafCount}` : ""}
-          </div>
-        </div>
-        {!hasChildren &&
-          (inBucket ? (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(node.id);
-              }}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd(node.id);
-              }}
-              disabled={full}
-              aria-label="Add to bucket"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          ))}
+    <div
+      onClick={() => {
+        if (inBucket) {
+          onRemove(topic.id);
+        } else if (!full) {
+          onAdd(topic.id);
+        }
+      }}
+      className={cn(
+        "flex items-start gap-3 rounded-2xl px-3 py-2.5 transition-all min-w-0 cursor-pointer select-none",
+        inBucket ? "bg-white/70 border-primary/40 shadow-sm" : "glass hover:bg-white/40",
+      )}
+    >
+      <div className="pt-0.5 shrink-0">
+        <StatusDot status={topic.status} />
       </div>
-      {hasChildren && expanded && (
-        <div className="space-y-1 mt-1">
-          {node.children!.map((child) => (
-            <BankNode
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              bucket={bucket}
-              onAdd={onAdd}
-              onRemove={onRemove}
-              full={full}
-            />
-          ))}
+
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium break-words leading-tight">{topic.title}</div>
+        <div className="text-[11px] text-muted-foreground mt-1 truncate">
+          {topic.subjectTitle} {topic.chapterTitle ? ` • ${topic.chapterTitle}` : ""}
         </div>
+      </div>
+
+      {inBucket ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0 pointer-events-none"
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+      ) : (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0 pointer-events-none"
+          disabled={full}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
       )}
     </div>
   );
