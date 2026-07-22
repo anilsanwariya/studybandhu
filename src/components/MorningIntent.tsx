@@ -3,12 +3,50 @@ import { Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { StatusDot } from "@/components/StatusDot";
 import { useStore } from "@/lib/store";
-import { quotes } from "@/lib/mock-syllabus";
 import type { SyllabusNode } from "@/lib/mock-syllabus";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Minus, Quote, Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Minus, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Strict inline RGBA colors to bypass any Tailwind config issues and maintain consistency
+const THEME_COLORS = [
+  {
+    parent: "rgba(147, 197, 253, 0.4)",
+    child: "rgba(147, 197, 253, 0.15)",
+    border: "rgba(147, 197, 253, 0.6)",
+    badgeBg: "rgba(147, 197, 253, 0.8)",
+    badgeText: "#1e3a8a",
+  }, // Blue
+  {
+    parent: "rgba(110, 231, 183, 0.4)",
+    child: "rgba(110, 231, 183, 0.15)",
+    border: "rgba(110, 231, 183, 0.6)",
+    badgeBg: "rgba(110, 231, 183, 0.8)",
+    badgeText: "#064e3b",
+  }, // Emerald
+  {
+    parent: "rgba(216, 180, 254, 0.4)",
+    child: "rgba(216, 180, 254, 0.15)",
+    border: "rgba(216, 180, 254, 0.6)",
+    badgeBg: "rgba(216, 180, 254, 0.8)",
+    badgeText: "#581c87",
+  }, // Purple
+  {
+    parent: "rgba(253, 186, 116, 0.4)",
+    child: "rgba(253, 186, 116, 0.15)",
+    border: "rgba(253, 186, 116, 0.6)",
+    badgeBg: "rgba(253, 186, 116, 0.8)",
+    badgeText: "#7c2d12",
+  }, // Orange
+  {
+    parent: "rgba(249, 168, 212, 0.4)",
+    child: "rgba(249, 168, 212, 0.15)",
+    border: "rgba(249, 168, 212, 0.6)",
+    badgeBg: "rgba(249, 168, 212, 0.8)",
+    badgeText: "#831843",
+  }, // Pink
+];
 
 // Extend the node type to carry its parent context in a flat list
 type FlatTopic = SyllabusNode & {
@@ -53,7 +91,6 @@ const PANES = [
 
 export function MorningIntent() {
   const { tree, bucketNodes, bucket, dailyLimit, addToBucket, removeFromBucket } = useStore();
-  const quote = useMemo(() => quotes[new Date().getDate() % quotes.length], []);
 
   // 0 = New, 1 = Due, 2 = Bucket. Default is Due (1).
   const [paneIdx, setPaneIdx] = useState<0 | 1 | 2>(1);
@@ -92,22 +129,14 @@ export function MorningIntent() {
   return (
     <AppShell>
       <div className="max-w-2xl mx-auto w-full relative px-2 sm:px-0">
-        {/* Quote banner */}
-        <div className="glass rounded-3xl px-4 py-3 flex items-start gap-3 mb-5">
-          <div className="h-8 w-8 rounded-full bg-lavender/70 flex items-center justify-center shrink-0 mt-0.5">
-            <Quote className="h-4 w-4 text-foreground/70" />
-          </div>
-          <p className="text-sm font-medium italic text-foreground/80 leading-relaxed break-words">"{quote}"</p>
-        </div>
-
-        <header className="mb-5">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Good morning.</h1>
-          <p className="text-muted-foreground mt-1 text-sm sm:text-base">Choose what today looks like — gently.</p>
+        <header className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Good morning.</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">Choose what today looks like — gently.</p>
         </header>
 
         {/* Selectors - Only show when NOT on the Bucket tab */}
         {paneIdx !== 2 && (
-          <div className="glass rounded-2xl p-2 mb-4 flex flex-nowrap items-center gap-2">
+          <div className="glass rounded-xl p-1.5 mb-4 flex flex-nowrap items-center gap-2">
             <Select
               value={subjectFilter}
               onValueChange={(v) => {
@@ -115,17 +144,17 @@ export function MorningIntent() {
                 setChapterFilter("all");
               }}
             >
-              <SelectTrigger className="h-auto min-h-10 py-2 rounded-2xl bg-white/70 border-white/60 flex-1 min-w-0 text-sm text-left">
+              <SelectTrigger className="h-8 rounded-lg bg-white/70 border-white/60 flex-1 min-w-0 text-xs text-left">
                 <div className="truncate">
                   <SelectValue placeholder="Subject" />
                 </div>
               </SelectTrigger>
               <SelectContent className="max-w-[90vw] sm:max-w-md w-full max-h-[50vh]">
-                <SelectItem value="all" className="whitespace-normal break-words py-2.5 pr-8">
+                <SelectItem value="all" className="whitespace-normal break-words py-2 pr-8 text-xs">
                   All Subjects
                 </SelectItem>
                 {subjects.map((s) => (
-                  <SelectItem key={s.id} value={s.id} className="whitespace-normal break-words py-2.5 pr-8">
+                  <SelectItem key={s.id} value={s.id} className="whitespace-normal break-words py-2 pr-8 text-xs">
                     {s.title}
                   </SelectItem>
                 ))}
@@ -133,17 +162,17 @@ export function MorningIntent() {
             </Select>
 
             <Select value={chapterFilter} onValueChange={setChapterFilter} disabled={chapters.length === 0}>
-              <SelectTrigger className="h-auto min-h-10 py-2 rounded-2xl bg-white/70 border-white/60 flex-1 min-w-0 text-sm text-left">
+              <SelectTrigger className="h-8 rounded-lg bg-white/70 border-white/60 flex-1 min-w-0 text-xs text-left">
                 <div className="truncate">
                   <SelectValue placeholder="Chapter" />
                 </div>
               </SelectTrigger>
               <SelectContent className="max-w-[90vw] sm:max-w-md w-full max-h-[50vh]">
-                <SelectItem value="all" className="whitespace-normal break-words py-2.5 pr-8">
+                <SelectItem value="all" className="whitespace-normal break-words py-2 pr-8 text-xs">
                   All Chapters
                 </SelectItem>
                 {chapters.map((c) => (
-                  <SelectItem key={c.id} value={c.id} className="whitespace-normal break-words py-2.5 pr-8">
+                  <SelectItem key={c.id} value={c.id} className="whitespace-normal break-words py-2 pr-8 text-xs">
                     {c.title}
                   </SelectItem>
                 ))}
@@ -154,7 +183,7 @@ export function MorningIntent() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="rounded-full h-10 px-3 text-xs shrink-0"
+                className="rounded-lg h-8 px-2.5 text-xs shrink-0"
                 onClick={() => {
                   setSubjectFilter("all");
                   setChapterFilter("all");
@@ -167,8 +196,7 @@ export function MorningIntent() {
         )}
 
         {/* Main Focused Carousel Card */}
-        {/* Note: overflow-hidden removed so half-out buttons aren't clipped */}
-        <section className="relative glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[65vh] lg:h-[calc(100vh-18rem)]">
+        <section className="relative glass-strong rounded-3xl p-4 sm:p-5 lg:p-6 flex flex-col min-w-0 h-[68vh] lg:h-[calc(100vh-14rem)]">
           {/* Half-in, Half-out Navigation Arrows */}
           {paneIdx > 0 && (
             <Button
@@ -208,6 +236,7 @@ export function MorningIntent() {
               <TopicList
                 topics={newTopics}
                 bucket={bucket}
+                tree={tree}
                 onAdd={addToBucket}
                 onRemove={removeFromBucket}
                 full={full}
@@ -221,6 +250,7 @@ export function MorningIntent() {
               <TopicList
                 topics={dueTopics}
                 bucket={bucket}
+                tree={tree}
                 onAdd={addToBucket}
                 onRemove={removeFromBucket}
                 full={full}
@@ -268,25 +298,42 @@ export function MorningIntent() {
                     </p>
                   </div>
                 ) : (
-                  bucketNodes.map((n) => (
-                    <div key={n.id} className="glass rounded-2xl px-3 py-2.5 flex items-start gap-3 min-w-0">
-                      <div className="pt-1">
-                        <StatusDot status={n.status} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium break-words">{n.title}</div>
-                        <div className="text-[11px] text-muted-foreground capitalize">{n.type}</div>
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0"
-                        onClick={() => removeFromBucket(n.id)}
+                  bucketNodes.map((n) => {
+                    // Calculate theme for items in the bucket too!
+                    const parentId =
+                      n.depth === 2
+                        ? tree.find((s) => s.children?.some((c) => c.children?.some((t) => t.id === n.id)))?.id
+                        : null;
+                    const subjectIndex = parentId ? tree.findIndex((s) => s.id === parentId) : 0;
+                    const theme = THEME_COLORS[Math.max(0, subjectIndex) % THEME_COLORS.length];
+
+                    return (
+                      <div
+                        key={n.id}
+                        className="rounded-2xl px-3 py-2.5 flex items-start gap-3 min-w-0 shadow-sm backdrop-blur-sm transition-all"
+                        style={{
+                          backgroundColor: theme.child,
+                          border: `1px solid ${theme.border}`,
+                        }}
                       >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))
+                        <div className="pt-1">
+                          <StatusDot status={n.status} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium break-words text-foreground/90">{n.title}</div>
+                          <div className="text-[11px] text-foreground/60 capitalize mt-0.5">{n.type}</div>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 rounded-full hover:bg-white/60 shrink-0"
+                          onClick={() => removeFromBucket(n.id)}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
@@ -307,12 +354,14 @@ export function MorningIntent() {
 function TopicList({
   topics,
   bucket,
+  tree,
   onAdd,
   onRemove,
   full,
 }: {
   topics: FlatTopic[];
   bucket: string[];
+  tree: SyllabusNode[];
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   full: boolean;
@@ -323,7 +372,7 @@ function TopicList({
   return (
     <div className="space-y-2 pb-4">
       {topics.map((t) => (
-        <TopicCard key={t.id} topic={t} bucket={bucket} onAdd={onAdd} onRemove={onRemove} full={full} />
+        <TopicCard key={t.id} topic={t} bucket={bucket} tree={tree} onAdd={onAdd} onRemove={onRemove} full={full} />
       ))}
     </div>
   );
@@ -333,12 +382,14 @@ function TopicList({
 function TopicCard({
   topic,
   bucket,
+  tree,
   onAdd,
   onRemove,
   full,
 }: {
   topic: FlatTopic;
   bucket: string[];
+  tree: SyllabusNode[];
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   full: boolean;
@@ -347,33 +398,48 @@ function TopicCard({
   const hasSubtopics = !!topic.children && topic.children.length > 0;
   const [expanded, setExpanded] = useState(false);
 
+  // Find the subject index to consistently assign a theme color
+  const subjectIndex = tree.findIndex((s) => s.id === topic.subjectId);
+  const theme = THEME_COLORS[Math.max(0, subjectIndex) % THEME_COLORS.length];
+
   return (
-    <div className={cn("flex flex-col rounded-2xl transition-all min-w-0 glass")}>
+    <div className="flex flex-col min-w-0 transition-all">
       {/* Main Topic Row */}
       <div
         onClick={() => {
           if (hasSubtopics) setExpanded(!expanded);
         }}
         className={cn(
-          "flex items-start gap-3 px-3 py-2.5 min-w-0 select-none",
-          hasSubtopics ? "cursor-pointer hover:bg-white/40" : "",
-          inBucket ? "bg-white/70 border-primary/40 shadow-sm rounded-2xl" : "rounded-2xl",
+          "flex items-start gap-3 px-3 py-2.5 min-w-0 select-none transition-all shadow-sm backdrop-blur-sm",
+          hasSubtopics && "cursor-pointer hover:brightness-105",
+          hasSubtopics && expanded ? "rounded-t-2xl" : "rounded-2xl",
         )}
+        style={{
+          backgroundColor: inBucket ? theme.border : theme.child, // Highlight slightly stronger if in bucket
+          border: `1px solid ${theme.border}`,
+        }}
       >
         <div className="pt-0.5 shrink-0 flex items-center gap-1.5">
           {hasSubtopics && (
-            <ChevronRight
-              className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-90")}
-            />
+            <ChevronRight className={cn("h-4 w-4 text-foreground/50 transition-transform", expanded && "rotate-90")} />
           )}
           <StatusDot status={topic.status} />
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium break-words leading-tight">{topic.title}</div>
-          <div className="text-[11px] text-muted-foreground mt-1 truncate">
+          <div className="flex flex-wrap items-center gap-1.5 mb-0.5 text-foreground/70">
+            <span
+              className="px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-bold"
+              style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
+            >
+              {topic.type}
+            </span>
+            {hasSubtopics && <span className="text-[10px] font-medium">• {topic.children!.length} subtopics</span>}
+          </div>
+
+          <div className="text-sm font-medium break-words leading-tight text-foreground/90">{topic.title}</div>
+          <div className="text-[10px] text-foreground/60 mt-1 truncate">
             {topic.subjectTitle} {topic.chapterTitle ? ` • ${topic.chapterTitle}` : ""}
-            {hasSubtopics ? ` • ${topic.children!.length} subtopics` : ""}
           </div>
         </div>
 
@@ -407,50 +473,59 @@ function TopicCard({
 
       {/* Expanded Subtopics Area */}
       {hasSubtopics && expanded && (
-        <div className="px-3 pb-3 pt-1 space-y-1.5 border-t border-white/20 mt-1 mx-2">
-          {topic.children!.map((sub) => {
-            const subInBucket = bucket.includes(sub.id);
-            return (
-              <div
-                key={sub.id}
-                className="flex items-start gap-3 pl-6 py-1 min-w-0 rounded-xl hover:bg-white/30 transition-colors"
-              >
-                <div className="pt-1 shrink-0">
-                  <StatusDot status={sub.status} />
-                </div>
-                <div className="flex-1 min-w-0 pt-0.5">
-                  <div className="text-xs text-foreground/90 break-words leading-tight">{sub.title}</div>
-                </div>
+        <div
+          className="relative z-0 -mt-1 pt-2 pb-2 px-1 rounded-b-2xl"
+          style={{
+            backgroundColor: "rgba(255, 255, 255, 0.2)",
+            border: `1px solid rgba(255, 255, 255, 0.3)`,
+            borderTop: "none",
+          }}
+        >
+          <div className="space-y-1 mt-1 mx-1">
+            {topic.children!.map((sub) => {
+              const subInBucket = bucket.includes(sub.id);
+              return (
+                <div
+                  key={sub.id}
+                  className="flex items-start gap-3 pl-6 py-1.5 min-w-0 rounded-xl hover:bg-white/30 transition-colors"
+                >
+                  <div className="pt-1 shrink-0">
+                    <StatusDot status={sub.status} />
+                  </div>
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="text-xs text-foreground/90 break-words leading-tight">{sub.title}</div>
+                  </div>
 
-                {subInBucket ? (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 rounded-full hover:bg-white/60 shrink-0 z-20 relative"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemove(sub.id);
-                    }}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0 z-20 relative"
-                    disabled={full}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAdd(sub.id);
-                    }}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            );
-          })}
+                  {subInBucket ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 rounded-full hover:bg-white/60 shrink-0 z-20 relative"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(sub.id);
+                      }}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 rounded-full hover:bg-primary/30 disabled:opacity-40 shrink-0 z-20 relative"
+                      disabled={full}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAdd(sub.id);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
