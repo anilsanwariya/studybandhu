@@ -54,6 +54,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { THEME_COLORS } from "@/lib/theme";
 import { toast } from "sonner";
+import type { Status } from "@/lib/mock-syllabus";
+
+function masteryBadge(status: Status, rev: number) {
+  if (status === "mastered") return { label: "Mastered", cls: "bg-mint/70 text-emerald-900" };
+  if (status === "needs-revision") return { label: "Intermediate", cls: "bg-peach/70 text-orange-900" };
+  if (status === "first-read")
+    return { label: rev >= 2 ? "Intermediate" : "Beginner", cls: "bg-lavender/70 text-purple-900" };
+  return { label: "Unread", cls: "bg-muted/60 text-muted-foreground" };
+}
+
+function nextDueLabel(iso?: string | null) {
+  if (!iso) return "—";
+  const days = Math.round((new Date(iso).getTime() - Date.now()) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  return `In ${days} days`;
+}
 
 export const Route = createFileRoute("/syllabus")({
   head: () => ({
