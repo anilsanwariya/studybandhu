@@ -9,6 +9,7 @@ import { Flame, Zap, Target, TrendingUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { THEME_COLORS } from "@/lib/theme";
 
 export const Route = createFileRoute("/progress")({
   head: () => ({
@@ -27,49 +28,6 @@ const PASTELS = {
   mastered: "oklch(0.82 0.11 165)",
 };
 
-// Strict inline RGBA colors to maintain consistency across features
-const THEME_COLORS = [
-  {
-    parent: "rgba(147, 197, 253, 0.4)",
-    child: "rgba(147, 197, 253, 0.15)",
-    border: "rgba(147, 197, 253, 0.6)",
-    badgeBg: "rgba(147, 197, 253, 0.8)",
-    badgeText: "#1e3a8a",
-    progress: "from-[#93c5fd] to-[#60a5fa]",
-  }, // Blue
-  {
-    parent: "rgba(110, 231, 183, 0.4)",
-    child: "rgba(110, 231, 183, 0.15)",
-    border: "rgba(110, 231, 183, 0.6)",
-    badgeBg: "rgba(110, 231, 183, 0.8)",
-    badgeText: "#064e3b",
-    progress: "from-[#6ee7b7] to-[#34d399]",
-  }, // Emerald
-  {
-    parent: "rgba(216, 180, 254, 0.4)",
-    child: "rgba(216, 180, 254, 0.15)",
-    border: "rgba(216, 180, 254, 0.6)",
-    badgeBg: "rgba(216, 180, 254, 0.8)",
-    badgeText: "#581c87",
-    progress: "from-[#d8b4fe] to-[#c084fc]",
-  }, // Purple
-  {
-    parent: "rgba(253, 186, 116, 0.4)",
-    child: "rgba(253, 186, 116, 0.15)",
-    border: "rgba(253, 186, 116, 0.6)",
-    badgeBg: "rgba(253, 186, 116, 0.8)",
-    badgeText: "#7c2d12",
-    progress: "from-[#fdba74] to-[#fb923c]",
-  }, // Orange
-  {
-    parent: "rgba(249, 168, 212, 0.4)",
-    child: "rgba(249, 168, 212, 0.15)",
-    border: "rgba(249, 168, 212, 0.6)",
-    badgeBg: "rgba(249, 168, 212, 0.8)",
-    badgeText: "#831843",
-    progress: "from-[#f9a8d4] to-[#f472b6]",
-  }, // Pink
-];
 
 // Extend the node type to carry its parent context in a flat list
 type FlatTopic = SyllabusNode & {
