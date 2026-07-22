@@ -21,7 +21,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -31,6 +30,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ChevronRight,
   RotateCcw,
@@ -42,6 +48,8 @@ import {
   Eye,
   EyeOff,
   Sparkles,
+  MoreVertical,
+  FileText,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -215,6 +223,9 @@ function TreeNode({
   onEdit: (e: NodeEdit) => void;
 }) {
   const [expanded, setExpanded] = useState(depth < 1);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const hasChildren = node.children && node.children.length > 0;
   const { resetNode, refreshUserOverrides } = useStore();
   const hideFn = useServerFn(setAdminNodeHidden);
@@ -250,34 +261,52 @@ function TreeNode({
     }
   };
 
+  const handleReset = () => {
+    resetNode(node.id);
+    setResetDialogOpen(false);
+  };
+
   return (
     <div>
       <div
+        onClick={() => {
+          if (hasChildren) setExpanded((e) => !e);
+        }}
         className={cn(
-          "group flex items-start gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all min-w-0",
-          "hover:bg-white/50 cursor-pointer",
+          "group flex items-start gap-2 rounded-2xl px-2 sm:px-3 py-2.5 transition-all min-w-0 select-none",
+          hasChildren ? "hover:bg-white/50 cursor-pointer" : "hover:bg-white/30",
           node.excluded && "opacity-40",
           node.hidden && "opacity-50",
         )}
         style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
+        {/* Chevron */}
         {hasChildren ? (
-          <button
-            onClick={() => setExpanded((e) => !e)}
-            className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-white/60 shrink-0 mt-0.5"
-          >
-            <ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} />
-          </button>
+          <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+            <ChevronRight
+              className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-90")}
+            />
+          </div>
         ) : (
           <span className="h-6 w-6 shrink-0" />
         )}
-        <span className="mt-1.5 shrink-0">
-          <StatusDot status={node.status} />
-        </span>
+
+        {/* Status Dot (Clickable shortcut to open drawer) */}
         <button
-          onClick={() => onOpen(node.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(node.id);
+          }}
+          className="mt-1.5 shrink-0 hover:scale-110 transition-transform cursor-pointer"
+          title="Manage Progress & Links"
+        >
+          <StatusDot status={node.status} />
+        </button>
+
+        {/* Title (Clicking this expands/collapses the row) */}
+        <div
           className={cn(
-            "flex-1 text-left text-sm min-w-0 break-words",
+            "flex-1 text-sm min-w-0 break-words pt-0.5",
             node.depth === 0 && "font-semibold text-base",
             node.depth === 1 && "font-medium",
             node.excluded && "line-through",
@@ -294,86 +323,115 @@ function TreeNode({
               hidden
             </span>
           )}
-        </button>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity self-center hidden sm:inline-block">
+        </div>
+
+        {/* Type Badge (Hidden on mobile) */}
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity self-center hidden sm:inline-block pt-1">
           {node.type}
         </span>
 
-        {/* FIX: Make actions fully visible on mobile (opacity-100) and hidden until hover on desktop (md:opacity-0 md:group-hover:opacity-100) */}
-        <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 flex-wrap justify-end">
-          {canAddChild && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddChild();
-              }}
-              className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-mint/60 text-foreground/60 hover:text-foreground transition-all"
-              aria-label={`Add ${childType}`}
-              title={`Add ${childType}`}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {isUserNode && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit({ mode: "edit", node });
-                }}
-                className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-sky/60 text-foreground/60 hover:text-foreground transition-all"
-                aria-label="Edit"
-                title="Edit"
+        {/* Clean Dropdown Actions Menu */}
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white/60">
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 glass-strong">
+              <DropdownMenuItem onClick={() => onOpen(node.id)} className="font-medium cursor-pointer">
+                <FileText className="mr-2 h-4 w-4" /> Manage Progress & Links
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {canAddChild && (
+                <DropdownMenuItem onClick={() => handleAddChild()} className="cursor-pointer">
+                  <Plus className="mr-2 h-4 w-4" /> Add {childType}
+                </DropdownMenuItem>
+              )}
+
+              {isUserNode && (
+                <DropdownMenuItem onClick={() => onEdit({ mode: "edit", node })} className="cursor-pointer">
+                  <Pencil className="mr-2 h-4 w-4" /> Rename
+                </DropdownMenuItem>
+              )}
+
+              {canHide && (
+                <DropdownMenuItem onClick={() => handleToggleHidden()} className="cursor-pointer">
+                  {node.hidden ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+                  {node.hidden ? "Unhide" : "Hide from syllabus"}
+                </DropdownMenuItem>
+              )}
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() => setResetDialogOpen(true)}
+                className="text-orange-600 focus:text-orange-700 focus:bg-orange-50 cursor-pointer"
               >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-blush/60 text-foreground/60 hover:text-foreground transition-all"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="Delete"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="glass-strong">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete "{node.title}"?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This removes the node and every child you added under it. This can't be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel className="rounded-full">Keep it</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleDelete}
-                      className="rounded-full bg-blush text-foreground hover:bg-blush/80"
-                    >
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </>
-          )}
-          {canHide && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleHidden();
-              }}
-              className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/70 text-foreground/60 hover:text-foreground transition-all"
-              aria-label={node.hidden ? "Unhide" : "Hide"}
-              title={node.hidden ? "Unhide" : "Hide from my syllabus"}
-            >
-              {node.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-            </button>
-          )}
-          <ResetButton nodeTitle={node.title} onConfirm={() => resetNode(node.id)} />
+                <RotateCcw className="mr-2 h-4 w-4" /> Reset Progress
+              </DropdownMenuItem>
+
+              {isUserNode && (
+                <DropdownMenuItem
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete Node
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      {/* Render Alert Dialogs outside of the DropdownMenu to prevent focus loss bugs */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent className="glass-strong">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset "{node.title}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reset all progress and revision history for this section? This clears status and due dates for every item
+              beneath it. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full">Keep progress</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleReset}
+              className="rounded-full bg-blush text-foreground hover:bg-blush/80"
+            >
+              Reset section
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent className="glass-strong">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{node.title}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the node and every child you added under it. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full">Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleDelete();
+                setDeleteDialogOpen(false);
+              }}
+              className="rounded-full bg-blush text-foreground hover:bg-blush/80"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Children Tree rendering */}
       {hasChildren && expanded && (
         <div className="space-y-1 mt-1">
           {node.children!.map((child) => (
@@ -393,7 +451,6 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Sync title when edit changes
   const open = edit !== null;
 
   useEffect(() => {
@@ -495,45 +552,13 @@ function NodeEditDialog({ edit, onClose }: { edit: NodeEdit | null; onClose: () 
   );
 }
 
-function ResetButton({ nodeTitle, onConfirm }: { nodeTitle: string; onConfirm: () => void }) {
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <button
-          className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-blush/60 text-foreground/60 hover:text-foreground transition-all shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Reset progress"
-          title="Reset progress"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
-      </AlertDialogTrigger>
-      <AlertDialogContent className="glass-strong">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Reset "{nodeTitle}"?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Reset all progress and revision history for this section? This clears status and due dates for every item
-            beneath it. This can't be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-full">Keep progress</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} className="rounded-full bg-blush text-foreground hover:bg-blush/80">
-            Reset section
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
 function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () => void }) {
   const { findNode, updateNode } = useStore();
   const node = openId ? findNode(openId) : null;
 
   return (
     <Sheet open={!!node} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="glass-strong border-l border-white/60 w-full sm:max-w-md">
+      <SheetContent className="glass-strong border-l border-white/60 w-full sm:max-w-md overflow-y-auto">
         {node && (
           <>
             <SheetHeader>
@@ -545,7 +570,7 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
               <SheetDescription>Attach a reference and shape how this fits into your plan.</SheetDescription>
             </SheetHeader>
 
-            <div className="px-4 space-y-5 mt-4">
+            <div className="px-1 space-y-5 mt-6">
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <LinkIcon className="h-3.5 w-3.5" /> Reference URL
@@ -570,7 +595,7 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
                 />
               </div>
 
-              <div className="glass rounded-2xl p-4 flex items-center justify-between">
+              <div className="glass rounded-2xl p-4 flex items-center justify-between mt-2">
                 <div>
                   <div className="text-sm font-medium">Exclude from study plan</div>
                   <div className="text-xs text-muted-foreground">Hide from Bank & Due lists</div>
@@ -579,7 +604,7 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
               </div>
 
               <div className="glass rounded-2xl p-4">
-                <div className="text-xs font-medium mb-2">Status</div>
+                <div className="text-xs font-medium mb-3">Status</div>
                 <div className="grid grid-cols-2 gap-2">
                   {(["unread", "first-read", "needs-revision", "mastered"] as const).map((s) => (
                     <Button
@@ -587,7 +612,7 @@ function NodeDrawer({ openId, onClose }: { openId: string | null; onClose: () =>
                       variant={node.status === s ? "default" : "outline"}
                       size="sm"
                       onClick={() => updateNode(node.id, { status: s })}
-                      className="rounded-full justify-start gap-2 bg-white/50 border-white/60 hover:bg-white/80 data-[state=on]:bg-primary"
+                      className="rounded-full justify-start gap-2 bg-white/50 border-white/60 hover:bg-white/80 data-[state=on]:bg-primary h-auto py-2"
                     >
                       <StatusDot status={s} />
                       <span className="text-xs">{statusMeta[s].label}</span>
