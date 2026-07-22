@@ -346,7 +346,25 @@ function TreeNode({
           >
             {node.title}
           </div>
+
+          {node.depth === 2 && (() => {
+            const b = masteryBadge(node.status, node.revisionCount ?? 0);
+            return (
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] text-muted-foreground">
+                <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 font-semibold", b.cls)}>
+                  {b.label}
+                </span>
+                <span className="bg-white/60 px-2 py-0.5 rounded-full font-medium">
+                  Revs: <span className="text-foreground/80 font-bold">{node.revisionCount ?? 0}</span>
+                </span>
+                <span className="bg-white/60 px-2 py-0.5 rounded-full font-medium">
+                  Due: <span className="text-foreground/80 font-bold">{nextDueLabel(node.nextRevisionAt)}</span>
+                </span>
+              </div>
+            );
+          })()}
         </div>
+
 
         {/* Clean Dropdown Actions Menu */}
         <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
