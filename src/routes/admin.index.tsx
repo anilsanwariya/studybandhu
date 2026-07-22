@@ -162,6 +162,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const parseFn = useServerFn(parseSyllabusPdf);
   const schema = SCHEMA as unknown as string[];
 
@@ -178,6 +179,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     }
     for (const n of nodes) n.children = byParent.get(n.id) ?? [];
     setTree(byParent.get(null) ?? []);
+    setSelectedIds(new Set());
     setLoading(false);
   }, [exam.id]);
 
@@ -249,13 +251,23 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
 
   const updateNodeAt = (path: number[], mut: (n: TreeNode) => TreeNode | null) => {
     const clone = structuredClone(tree) as TreeNode[];
+    const removed: string[] = [];
     let arr = clone;
     for (let i = 0; i < path.length - 1; i++) arr = arr[path[i]].children;
     const idx = path[path.length - 1];
     const res = mut(arr[idx]);
-    if (res === null) arr.splice(idx, 1);
-    else arr[idx] = res;
+    if (res === null) {
+      collectIds(arr[idx], removed);
+      arr.splice(idx, 1);
+    } else arr[idx] = res;
     setTree(clone);
+    if (removed.length) {
+      setSelectedIds((s) => {
+        const next = new Set(s);
+        removed.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
   };
 
   const addChild = (path: number[] | null, depth: number) => {
@@ -263,6 +275,130 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
     const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, children: [] };
     if (!path) { setTree([...tree, node]); return; }
     updateNodeAt(path, (n) => ({ ...n, children: [...n.children, node] }));
+  };
+
+  // ---- Level change (single) ----
+  const changeLevelAt = (path: number[], newDepth: number): { ok: boolean; reason?: string } => {
+    if (newDepth < 0 || newDepth >= schema.length) return { ok: false, reason: "Invalid level" };
+    const clone = structuredClone(tree) as TreeNode[];
+    const node = getAt(clone, path);
+    if (!node) return { ok: false, reason: "Not found" };
+    const oldDepth = path.length - 1;
+    if (oldDepth === newDepth) return { ok: true };
+    const maxSubDepth = maxDepthOf(node, oldDepth);
+    const delta = newDepth - oldDepth;
+    if (maxSubDepth + delta > schema.length - 1) return { ok: false, reason: "Would exceed subtopic level" };
+
+    // Remove node from current position
+    const parentArr = getParentArr(clone, path);
+    const idx = path[path.length - 1];
+    parentArr.splice(idx, 1);
+
+    // Find new insertion location
+    if (newDepth < oldDepth) {
+      // Promote: place after the ancestor at depth newDepth in its parent array.
+      // The ancestor node is at path.slice(0, newDepth+1) — but we've removed the node, and it's a sibling chain up.
+      // We insert right after the ancestor that used to contain it at depth newDepth.
+      const ancestorPath = path.slice(0, newDepth + 1);
+      const targetParentArr = getParentArr(clone, ancestorPath);
+      const ancestorIdx = ancestorPath[ancestorPath.length - 1];
+      targetParentArr.splice(ancestorIdx + 1, 0, node);
+    } else {
+      // Demote: place as first child of the previous sibling at oldDepth if it exists AND schema allows,
+      // walking down to depth newDepth-1 via last-child chain, creating no intermediates.
+      // Simpler: previous sibling must exist and have a descendant chain reaching depth newDepth-1.
+      const prevIdx = idx - 1;
+      if (prevIdx < 0) return revert();
+      let cursor: TreeNode = parentArr[prevIdx];
+      let cursorDepth = oldDepth;
+      while (cursorDepth < newDepth - 1) {
+        if (cursor.children.length === 0) return revert();
+        cursor = cursor.children[cursor.children.length - 1];
+        cursorDepth++;
+      }
+      cursor.children.push(node);
+    }
+
+    rewriteDepths(node, newDepth, schema);
+    setTree(clone);
+    return { ok: true };
+
+    function revert() {
+      return { ok: false, reason: "No valid parent at target level — add one first" };
+    }
+  };
+
+  // ---- Delete with cascade-promote ----
+  const deleteAndPromoteAt = (path: number[]) => {
+    const clone = structuredClone(tree) as TreeNode[];
+    const node = getAt(clone, path);
+    if (!node) return;
+    const parentArr = getParentArr(clone, path);
+    const idx = path[path.length - 1];
+    const nodeDepth = path.length - 1;
+    const children = node.children;
+    // Promote each child to node's depth
+    children.forEach((c) => rewriteDepths(c, nodeDepth, schema));
+    parentArr.splice(idx, 1, ...children);
+    setTree(clone);
+    const removed: string[] = [node.id];
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      removed.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
+  // ---- Selection helpers ----
+  const toggleSelect = (id: string, subtree: boolean, node: TreeNode) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const ids: string[] = [];
+      if (subtree) collectIds(node, ids);
+      else ids.push(id);
+      const willAdd = !next.has(id);
+      ids.forEach((x) => (willAdd ? next.add(x) : next.delete(x)));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkChangeLevel = (newDepth: number) => {
+    // Build snapshot of paths for currently selected ids, deepest first
+    const paths = pathsForIds(tree, selectedIds);
+    // For deepest-first when promoting, shallowest-first when demoting — keep it simple: shallowest-first for promote, deepest-first for demote.
+    // Safer: process one at a time, recomputing paths from a working tree.
+    let working = structuredClone(tree) as TreeNode[];
+    let changed = 0, skipped = 0;
+    const order = [...paths.entries()].sort((a, b) => a[1].length - b[1].length);
+    // Rebuild after each op by finding node id in working tree
+    for (const [id] of order) {
+      const p = findPathById(working, id);
+      if (!p) { skipped++; continue; }
+      const res = tryChangeLevel(working, p, newDepth, schema);
+      if (res.ok && res.tree) { working = res.tree; changed++; } else skipped++;
+    }
+    setTree(working);
+    toast.success(`${changed} changed${skipped ? `, ${skipped} skipped` : ""}`);
+    clearSelection();
+  };
+
+  const bulkDelete = () => {
+    if (!confirm(`Delete ${selectedIds.size} item(s)? Children will be promoted up.`)) return;
+    let working = structuredClone(tree) as TreeNode[];
+    // Deepest first
+    const ids = [...selectedIds];
+    const withDepth = ids.map((id) => ({ id, d: (findPathById(working, id)?.length ?? 0) - 1 }));
+    withDepth.sort((a, b) => b.d - a.d);
+    for (const { id } of withDepth) {
+      const p = findPathById(working, id);
+      if (!p) continue;
+      working = applyDeletePromote(working, p, schema);
+    }
+    setTree(working);
+    toast.success("Deleted");
+    clearSelection();
   };
 
   return (
@@ -294,19 +430,54 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="glass-strong rounded-2xl px-4 py-2.5 mb-3 flex flex-wrap items-center gap-2 border border-primary/30">
+          <span className="text-sm font-semibold">{selectedIds.size} selected</span>
+          <span className="text-xs text-muted-foreground mr-2">Change level to:</span>
+          {schema.map((lbl, d) => (
+            <Button key={d} size="sm" variant="outline" className="rounded-full h-7 bg-white/60 capitalize" onClick={() => bulkChangeLevel(d)}>
+              {lbl}
+            </Button>
+          ))}
+          <div className="flex-1" />
+          <Button size="sm" variant="outline" className="rounded-full h-7 bg-white/60 gap-1 hover:bg-destructive/10 hover:text-destructive" onClick={bulkDelete}>
+            <Trash2 className="h-3 w-3" /> Delete selected
+          </Button>
+          <Button size="sm" variant="ghost" className="rounded-full h-7 gap-1" onClick={clearSelection}>
+            <X className="h-3 w-3" /> Clear
+          </Button>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-10"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
       ) : (
         <>
           <div className="overflow-x-auto -mx-6 px-6">
-            <div className="space-y-2 min-w-[520px]">
-              {tree.map((n, i) => <NodeRow key={n.id} node={n} path={[i]} schema={schema} onUpdate={updateNodeAt} onAdd={addChild} />)}
+            <div className="space-y-2 min-w-[620px]">
+              {tree.map((n, i) => (
+                <NodeRow
+                  key={n.id}
+                  node={n}
+                  path={[i]}
+                  schema={schema}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  onUpdate={updateNodeAt}
+                  onAdd={addChild}
+                  onDelete={deleteAndPromoteAt}
+                  onChangeLevel={(p, d) => {
+                    const r = changeLevelAt(p, d);
+                    if (!r.ok) toast.error(r.reason ?? "Can't change level");
+                  }}
+                />
+              ))}
             </div>
           </div>
           <Button variant="outline" className="rounded-full bg-white/60 mt-4 gap-1.5" onClick={() => addChild(null, 0)}>
             <Plus className="h-3.5 w-3.5" /> Add {schema[0]}
           </Button>
-          <p className="text-xs text-muted-foreground mt-6">Tip: Upload a syllabus PDF to auto-fill Subject &rsaquo; Chapter &rsaquo; Topic &rsaquo; Subtopic. Review, edit, then Save.</p>
+          <p className="text-xs text-muted-foreground mt-6">Tip: Change a row's level with the dropdown. Deleting a row promotes its children up one level. Shift-click a checkbox to select the whole subtree.</p>
         </>
       )}
     </div>
@@ -314,12 +485,16 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
 }
 
 
-function NodeRow({ node, path, schema, onUpdate, onAdd }: {
+function NodeRow({ node, path, schema, selectedIds, onToggleSelect, onUpdate, onAdd, onDelete, onChangeLevel }: {
   node: TreeNode;
   path: number[];
   schema: string[];
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string, subtree: boolean, node: TreeNode) => void;
   onUpdate: (path: number[], mut: (n: TreeNode) => TreeNode | null) => void;
   onAdd: (path: number[], depth: number) => void;
+  onDelete: (path: number[]) => void;
+  onChangeLevel: (path: number[], depth: number) => void;
 }) {
   const [open, setOpen] = useState(true);
   const depth = path.length - 1;
@@ -327,25 +502,42 @@ function NodeRow({ node, path, schema, onUpdate, onAdd }: {
   const canAddChild = childDepth < schema.length;
   const label = schema[depth] ?? node.node_type;
   const indent = depth * 16;
+  const isSelected = selectedIds.has(node.id);
   return (
     <div>
-      <div className="glass rounded-2xl px-3 py-2 flex items-center gap-2" style={{ marginLeft: indent }}>
+      <div className={`glass rounded-2xl px-3 py-2 flex items-center gap-2 ${isSelected ? "ring-1 ring-primary/50 bg-white/70" : ""}`} style={{ marginLeft: indent }}>
+        <span
+          className="shrink-0"
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(node.id, e.shiftKey, node); }}
+          title="Click to select. Shift-click for whole subtree."
+        >
+          <Checkbox checked={isSelected} onCheckedChange={() => {}} className="pointer-events-none" />
+        </span>
         <button onClick={() => setOpen(!open)} className="h-6 w-6 rounded-md hover:bg-white/60 flex items-center justify-center shrink-0">
           {node.children.length > 0 ? (open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />}
         </button>
-        <span className="text-[10px] uppercase text-muted-foreground font-semibold shrink-0 w-20 truncate">{label}</span>
+        <Select value={String(depth)} onValueChange={(v) => onChangeLevel(path, Number(v))}>
+          <SelectTrigger className="h-7 w-[104px] bg-white/60 border-white/70 rounded-lg text-[10px] uppercase font-semibold shrink-0">
+            <SelectValue placeholder={label} />
+          </SelectTrigger>
+          <SelectContent>
+            {schema.map((lbl, d) => (
+              <SelectItem key={d} value={String(d)} className="capitalize text-xs">{lbl}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input value={node.title} onChange={(e) => onUpdate(path, (n) => ({ ...n, title: e.target.value }))} className="h-8 bg-white/60 border-white/70 rounded-lg text-sm" />
         {canAddChild && (
           <Button size="sm" variant="ghost" className="rounded-full h-8 gap-1" onClick={() => onAdd(path, childDepth)}>
             <Plus className="h-3 w-3" /> {schema[childDepth]}
           </Button>
         )}
-        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive" onClick={() => onUpdate(path, () => null)}>
+        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(path)} title="Delete (children promote up)">
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
       {open && node.children.map((c, i) => (
-        <NodeRow key={c.id} node={c} path={[...path, i]} schema={schema} onUpdate={onUpdate} onAdd={onAdd} />
+        <NodeRow key={c.id} node={c} path={[...path, i]} schema={schema} selectedIds={selectedIds} onToggleSelect={onToggleSelect} onUpdate={onUpdate} onAdd={onAdd} onDelete={onDelete} onChangeLevel={onChangeLevel} />
       ))}
     </div>
   );
@@ -368,3 +560,95 @@ function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
 function countAll(nodes: TreeNode[]): number {
   return nodes.reduce((s, n) => s + 1 + countAll(n.children), 0);
 }
+
+// ---- Tree helpers ----
+function getAt(tree: TreeNode[], path: number[]): TreeNode | null {
+  let arr = tree;
+  for (let i = 0; i < path.length - 1; i++) {
+    const nxt = arr[path[i]];
+    if (!nxt) return null;
+    arr = nxt.children;
+  }
+  return arr[path[path.length - 1]] ?? null;
+}
+function getParentArr(tree: TreeNode[], path: number[]): TreeNode[] {
+  let arr = tree;
+  for (let i = 0; i < path.length - 1; i++) arr = arr[path[i]].children;
+  return arr;
+}
+function maxDepthOf(node: TreeNode, baseDepth: number): number {
+  let m = baseDepth;
+  for (const c of node.children) m = Math.max(m, maxDepthOf(c, baseDepth + 1));
+  return m;
+}
+function rewriteDepths(node: TreeNode, newDepth: number, schema: string[]) {
+  node.depth = newDepth;
+  node.node_type = schema[newDepth] ?? node.node_type;
+  for (const c of node.children) rewriteDepths(c, newDepth + 1, schema);
+}
+function collectIds(node: TreeNode, acc: string[]) {
+  acc.push(node.id);
+  for (const c of node.children) collectIds(c, acc);
+}
+function findPathById(tree: TreeNode[], id: string, base: number[] = []): number[] | null {
+  for (let i = 0; i < tree.length; i++) {
+    const p = [...base, i];
+    if (tree[i].id === id) return p;
+    const r = findPathById(tree[i].children, id, p);
+    if (r) return r;
+  }
+  return null;
+}
+function pathsForIds(tree: TreeNode[], ids: Set<string>): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  ids.forEach((id) => {
+    const p = findPathById(tree, id);
+    if (p) out.set(id, p);
+  });
+  return out;
+}
+function tryChangeLevel(tree: TreeNode[], path: number[], newDepth: number, schema: string[]): { ok: boolean; tree?: TreeNode[] } {
+  if (newDepth < 0 || newDepth >= schema.length) return { ok: false };
+  const clone = structuredClone(tree) as TreeNode[];
+  const node = getAt(clone, path);
+  if (!node) return { ok: false };
+  const oldDepth = path.length - 1;
+  if (oldDepth === newDepth) return { ok: true, tree: clone };
+  const delta = newDepth - oldDepth;
+  if (maxDepthOf(node, oldDepth) + delta > schema.length - 1) return { ok: false };
+  const parentArr = getParentArr(clone, path);
+  const idx = path[path.length - 1];
+  parentArr.splice(idx, 1);
+  if (newDepth < oldDepth) {
+    const ancestorPath = path.slice(0, newDepth + 1);
+    const targetParentArr = getParentArr(clone, ancestorPath);
+    const ancestorIdx = ancestorPath[ancestorPath.length - 1];
+    targetParentArr.splice(ancestorIdx + 1, 0, node);
+  } else {
+    const prevIdx = idx - 1;
+    if (prevIdx < 0) return { ok: false };
+    let cursor: TreeNode = parentArr[prevIdx];
+    let cursorDepth = oldDepth;
+    while (cursorDepth < newDepth - 1) {
+      if (cursor.children.length === 0) return { ok: false };
+      cursor = cursor.children[cursor.children.length - 1];
+      cursorDepth++;
+    }
+    cursor.children.push(node);
+  }
+  rewriteDepths(node, newDepth, schema);
+  return { ok: true, tree: clone };
+}
+function applyDeletePromote(tree: TreeNode[], path: number[], schema: string[]): TreeNode[] {
+  const clone = structuredClone(tree) as TreeNode[];
+  const node = getAt(clone, path);
+  if (!node) return clone;
+  const parentArr = getParentArr(clone, path);
+  const idx = path[path.length - 1];
+  const nodeDepth = path.length - 1;
+  const children = node.children;
+  children.forEach((c) => rewriteDepths(c, nodeDepth, schema));
+  parentArr.splice(idx, 1, ...children);
+  return clone;
+}
+
