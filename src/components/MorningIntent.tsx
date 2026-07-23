@@ -78,10 +78,10 @@ export function MorningIntent() {
     addToBucket,
     removeFromBucket,
     scheduleMode,
+    studyMode,
     aggregatedUpcoming,
   } = useStore();
   const { user } = useAuth();
-  const studyMode = useStore().studyMode;
 
   const [paneIdx, setPaneIdx] = useState<0 | 1 | 2>(1);
   const [subjectFilter, setSubjectFilter] = useState("all");
