@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ListTree, Sparkles, BarChart3, Flame, Zap } from "lucide-react";
+import { Home, ListTree, Sparkles, BarChart3, Flame, Zap, CalendarClock } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ const nav = [
   { to: "/intent", label: "Intent", icon: Home },
   { to: "/syllabus", label: "Syllabus", icon: ListTree },
   { to: "/revisions", label: "Revisions", icon: Sparkles },
+  { to: "/schedule", label: "Schedule", icon: CalendarClock },
   { to: "/progress", label: "Progress", icon: BarChart3 },
 ] as const;
 
@@ -23,7 +24,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen w-full flex flex-col">
-      {/* Fixed edge-to-edge top header */}
       <header className="sticky top-0 z-40 w-full bg-white/70 backdrop-blur-xl backdrop-saturate-150 border-b border-white/60 shadow-[0_1px_0_rgba(255,255,255,0.5)_inset,0_8px_24px_-16px_rgba(60,60,120,0.15)]">
         <div className="max-w-6xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between gap-3">
           <Link to="/intent" className="flex items-center gap-2.5 min-w-0">
@@ -66,7 +66,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* Floating bottom nav */}
       <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 glass-strong rounded-full px-2 py-2 flex items-center gap-1 shadow-xl">
         {nav.map((n) => {
           const active = pathname === n.to;
