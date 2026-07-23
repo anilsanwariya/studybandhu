@@ -340,19 +340,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       persistLoaded.current = true;
 
-      // Seed test series if none persisted yet.
+      // Load persisted test series (no seed data — user uploads their own).
       try {
         const raw = localStorage.getItem(seriesKey(user.id));
-        if (raw) {
-          setTestSeries(JSON.parse(raw) as TestSeries[]);
-        } else {
-          const topicIds: string[] = [];
-          walk(built, (n) => {
-            if (n.depth === 2) topicIds.push(n.id);
-          });
-          const seeded = seedTestSeries(topicIds);
-          setTestSeries(seeded);
-        }
+        setTestSeries(raw ? (JSON.parse(raw) as TestSeries[]) : []);
       } catch {
         setTestSeries([]);
       }
