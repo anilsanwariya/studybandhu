@@ -579,7 +579,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addTestSeries = useCallback(
-    (series: Omit<TestSeries, "id" | "status"> & { status?: TestSeries["status"] }) => {
+    (series: { title: string; status?: TestSeries["status"]; tests: Array<Omit<Test, "id"> & { id?: string }> }) => {
       const id = `series-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const withIds: TestSeries = {
         id,
