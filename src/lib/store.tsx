@@ -8,8 +8,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { SyllabusNode, Status, NodeType } from "./mock-syllabus";
-import { LEVEL_SCHEMA } from "./mock-syllabus";
+import type {
+  SyllabusNode,
+  Status,
+  NodeType,
+  BucketItem,
+  Intent,
+  TestSeries,
+  Test,
+} from "./mock-syllabus";
+import { LEVEL_SCHEMA, stagesForTopicId, seedTestSeries } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
@@ -32,14 +40,20 @@ interface UserOverrideRow {
   sort_order: number;
 }
 
+export type ScheduleMode = "self-paced" | "test-series";
+export type StudyMode = "prelims" | "mains" | "both";
+
 interface StoreState {
   tree: SyllabusNode[];
   syllabusLoading: boolean;
   levelSchema: string[];
-  bucket: string[];
+  bucket: BucketItem[];
   dailyLimit: number;
   streak: number;
   xp: number;
+  studyMode: StudyMode;
+  scheduleMode: ScheduleMode;
+  testSeries: TestSeries[];
 }
 
 export interface XpAward {
@@ -52,14 +66,16 @@ export interface XpAward {
   prevLevel: number;
 }
 
+export type BucketNode = SyllabusNode & { intent: Intent };
+
 interface StoreCtx extends StoreState {
   flatTopics: SyllabusNode[];
   newTargets: SyllabusNode[];
   dueToday: SyllabusNode[];
-  bucketNodes: SyllabusNode[];
+  bucketNodes: BucketNode[];
   lastAward: XpAward | null;
   clearAward: () => void;
-  addToBucket: (id: string) => void;
+  addToBucket: (id: string, intent?: Intent) => void;
   removeFromBucket: (id: string) => void;
   updateNode: (id: string, patch: Partial<SyllabusNode>) => void;
   resetNode: (id: string) => void;
@@ -70,6 +86,12 @@ interface StoreCtx extends StoreState {
   awardXp: (amount: number, reason: string) => void;
   findNode: (id: string) => SyllabusNode | undefined;
   refreshUserOverrides: () => Promise<void>;
+  setStudyMode: (m: StudyMode) => void;
+  setScheduleMode: (m: ScheduleMode) => void;
+  setTestSeriesStatus: (id: string, status: TestSeries["status"]) => void;
+  saveTestMarks: (seriesId: string, testId: string, marks: number, maxMarks: number) => void;
+  /** Aggregate of upcoming (nearest future) test per active series. */
+  aggregatedUpcoming: { topicIdCounts: Map<string, number>; nextTest: (Test & { seriesTitle: string }) | null };
 }
 
 const StoreContext = createContext<StoreCtx | null>(null);
@@ -123,11 +145,13 @@ interface PersistedNode {
 }
 interface PersistedState {
   nodes: Record<string, PersistedNode>;
-  bucket: string[];
+  bucket: (BucketItem | string)[]; // legacy shape allowed
   xp: number;
 }
 
 const persistKey = (userId: string, examId: string) => `sb-progress-${userId}-${examId}`;
+const seriesKey = (userId: string) => `sb-test-series-${userId}`;
+const modeKey = (userId: string) => `sb-modes-${userId}`;
 
 function loadPersisted(userId: string, examId: string): PersistedState | null {
   try {
@@ -138,16 +162,51 @@ function loadPersisted(userId: string, examId: string): PersistedState | null {
   }
 }
 
+function migrateBucket(items: (BucketItem | string)[] | undefined): BucketItem[] {
+  if (!items) return [];
+  return items.map((it) =>
+    typeof it === "string" ? { id: it, intent: "both" as Intent } : { id: it.id, intent: it.intent ?? "both" },
+  );
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [tree, setTree] = useState<SyllabusNode[]>([]);
   const [syllabusLoading, setSyllabusLoading] = useState(false);
-  const [bucket, setBucket] = useState<string[]>([]);
+  const [bucket, setBucket] = useState<BucketItem[]>([]);
   const [streak] = useState(0);
   const [xp, setXp] = useState(0);
+  const [studyMode, setStudyModeState] = useState<StudyMode>("both");
+  const [scheduleMode, setScheduleModeState] = useState<ScheduleMode>("self-paced");
+  const [testSeries, setTestSeries] = useState<TestSeries[]>([]);
   const persistLoaded = useRef(false);
   const reloadTick = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Load mode prefs on user change.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(modeKey(user.id));
+      if (raw) {
+        const p = JSON.parse(raw) as { studyMode?: StudyMode; scheduleMode?: ScheduleMode };
+        if (p.studyMode) setStudyModeState(p.studyMode);
+        if (p.scheduleMode) setScheduleModeState(p.scheduleMode);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
+  // Persist mode prefs.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      localStorage.setItem(modeKey(user.id), JSON.stringify({ studyMode, scheduleMode }));
+    } catch {
+      /* ignore */
+    }
+  }, [user, studyMode, scheduleMode]);
 
   useEffect(() => {
     const examId = user?.targetExamId;
@@ -188,14 +247,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const hasL1 = selectedL1.size > 0;
       const hasL2 = selectedL2.size > 0;
 
-      // Admin children grouped by parent id.
       const adminByParent = new Map<string | null, SyllabusDbRow[]>();
       for (const r of adminRows) {
         const arr = adminByParent.get(r.parent_id) ?? [];
         arr.push(r);
         adminByParent.set(r.parent_id, arr);
       }
-      // User children grouped by (parentKind, parentId).
       const userByParent = new Map<string, UserOverrideRow[]>();
       const parentKey = (kind: "admin" | "user", id: string) => `${kind}:${id}`;
       for (const r of userRows) {
@@ -209,10 +266,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const nodeMap = persisted?.nodes ?? {};
 
       const applyPersist = (n: SyllabusNode): SyllabusNode => {
+        const withStages = n.depth === 2 ? { ...n, stages: stagesForTopicId(n.id) } : n;
         const saved = nodeMap[n.id];
-        if (!saved) return n;
+        if (!saved) return withStages;
         return {
-          ...n,
+          ...withStages,
           status: (saved.status ?? "unread") as Status,
           dueToday: saved.dueToday ?? false,
           revisionCount: saved.revisionCount ?? 0,
@@ -248,7 +306,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const buildAdmin = (parentId: string | null): SyllabusNode[] => {
         const rows = adminByParent.get(parentId) ?? [];
         return rows.flatMap((r) => {
-          // Onboarding filter: only apply subject/chapter picks to admin nodes.
           if (r.depth === 0 && hasL1 && !selectedL1.has(r.id)) return [];
           if (r.depth === 1 && hasL2 && !selectedL2.has(r.id)) return [];
           const adminKids = buildAdmin(r.id);
@@ -272,15 +329,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       };
 
-      setTree(buildAdmin(null));
+      const built = buildAdmin(null);
+      setTree(built);
       if (persisted) {
-        setBucket(persisted.bucket ?? []);
+        setBucket(migrateBucket(persisted.bucket));
         setXp(persisted.xp ?? 0);
       } else {
         setBucket([]);
         setXp(0);
       }
       persistLoaded.current = true;
+
+      // Seed test series if none persisted yet.
+      try {
+        const raw = localStorage.getItem(seriesKey(user.id));
+        if (raw) {
+          setTestSeries(JSON.parse(raw) as TestSeries[]);
+        } else {
+          const topicIds: string[] = [];
+          walk(built, (n) => {
+            if (n.depth === 2) topicIds.push(n.id);
+          });
+          const seeded = seedTestSeries(topicIds);
+          setTestSeries(seeded);
+        }
+      } catch {
+        setTestSeries([]);
+      }
     })();
     return () => {
       cancelled = true;
@@ -328,11 +403,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         JSON.stringify({ nodes, bucket, xp } satisfies PersistedState),
       );
     } catch {
-      /* ignore quota errors */
+      /* ignore */
     }
   }, [tree, bucket, xp, user]);
 
-  // Topics are the unit of study. Depth 2 (or leaves at shallower depth if the tree is truncated).
+  // Persist test series changes.
+  useEffect(() => {
+    if (!user) return;
+    if (testSeries.length === 0) return;
+    try {
+      localStorage.setItem(seriesKey(user.id), JSON.stringify(testSeries));
+    } catch {
+      /* ignore */
+    }
+  }, [user, testSeries]);
+
   const flatTopics = useMemo(() => {
     const list: SyllabusNode[] = [];
     walk(tree, (n) => {
@@ -340,21 +425,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const isTopic = n.type === "topic" || n.depth === 2;
       const isLeaf = !n.children || n.children.filter((c) => !c.hidden).length === 0;
       if ((isTopic || isLeaf) && !n.excluded && n.depth <= 2) {
-        // Only include depth<=2 leaves; depth 3 subtopics never become independent bucket items.
         if (n.depth === 3) return;
         list.push(n);
       }
     });
-    // Deduplicate (a topic with subtopics won't be leaf, that's fine).
     const seen = new Set<string>();
     return list.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
   }, [tree]);
 
   const newTargets = flatTopics.filter((n) => n.status === "unread");
   const dueToday = flatTopics.filter((n) => n.dueToday && n.status !== "unread");
-  const bucketNodes = bucket
-    .map((id) => flatTopics.find((n) => n.id === id))
-    .filter(Boolean) as SyllabusNode[];
+  const bucketNodes = useMemo<BucketNode[]>(() => {
+    return bucket
+      .map((b) => {
+        const node = flatTopics.find((n) => n.id === b.id);
+        return node ? { ...node, intent: b.intent } : null;
+      })
+      .filter(Boolean) as BucketNode[];
+  }, [bucket, flatTopics]);
 
   const findNode = useCallback(
     (id: string) => {
@@ -367,12 +455,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [tree],
   );
 
-  const addToBucket = useCallback((id: string) => {
-    setBucket((b) => (b.includes(id) || b.length >= dailyLimit ? b : [...b, id]));
+  const addToBucket = useCallback((id: string, intent: Intent = "both") => {
+    setBucket((b) => (b.some((x) => x.id === id) || b.length >= dailyLimit ? b : [...b, { id, intent }]));
   }, []);
 
   const removeFromBucket = useCallback((id: string) => {
-    setBucket((b) => b.filter((x) => x !== id));
+    setBucket((b) => b.filter((x) => x.id !== id));
   }, []);
 
   const updateNode = useCallback((id: string, patch: Partial<SyllabusNode>) => {
@@ -381,7 +469,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const resetNode = useCallback((id: string) => {
     setTree((t) => mapTree(t, (n) => (n.id === id ? resetSubtree(n) : n)));
-    setBucket((b) => b.filter((x) => x !== id));
+    setBucket((b) => b.filter((x) => x.id !== id));
   }, []);
 
   const awardXp = useCallback((amount: number, reason: string) => {
@@ -439,7 +527,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
 
       if (rating !== "push") {
-        setBucket((b) => b.filter((x) => x !== id));
+        setBucket((b) => b.filter((x) => x.id !== id));
         const gain = rating === "easy" ? 20 : rating === "medium" ? 15 : 10;
         awardXp(gain, `${rating[0].toUpperCase()}${rating.slice(1)} recall`);
       }
@@ -462,7 +550,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             : n,
         ),
       );
-      setBucket((b) => b.filter((x) => x !== id));
+      setBucket((b) => b.filter((x) => x.id !== id));
       awardXp(12, `Scheduled in ${days}d`);
     },
     [awardXp],
@@ -487,6 +575,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTree((t) => mapTree(t, (n) => (n.id === topicId ? { ...n, subtopicChecks: {} } : n)));
   }, []);
 
+  const setStudyMode = useCallback((m: StudyMode) => setStudyModeState(m), []);
+  const setScheduleMode = useCallback((m: ScheduleMode) => setScheduleModeState(m), []);
+
+  const setTestSeriesStatus = useCallback((id: string, status: TestSeries["status"]) => {
+    setTestSeries((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
+  }, []);
+
+  const saveTestMarks = useCallback((seriesId: string, testId: string, marks: number, maxMarks: number) => {
+    setTestSeries((prev) =>
+      prev.map((s) =>
+        s.id !== seriesId
+          ? s
+          : { ...s, tests: s.tests.map((t) => (t.id !== testId ? t : { ...t, marks, maxMarks })) },
+      ),
+    );
+  }, []);
+
+  const aggregatedUpcoming = useMemo(() => {
+    const counts = new Map<string, number>();
+    const today = new Date().toISOString().slice(0, 10);
+    const activeSeries = testSeries.filter((s) => s.status === "active");
+    let nextTest: (Test & { seriesTitle: string }) | null = null;
+    for (const s of activeSeries) {
+      const upcoming = [...s.tests]
+        .filter((t) => t.date >= today)
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+      if (!upcoming) continue;
+      for (const tid of upcoming.mappedTopicIds) counts.set(tid, (counts.get(tid) ?? 0) + 1);
+      if (!nextTest || upcoming.date < nextTest.date) {
+        nextTest = { ...upcoming, seriesTitle: s.title };
+      }
+    }
+    return { topicIdCounts: counts, nextTest };
+  }, [testSeries]);
+
   const value: StoreCtx = {
     tree,
     syllabusLoading,
@@ -495,6 +618,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dailyLimit,
     streak,
     xp,
+    studyMode,
+    scheduleMode,
+    testSeries,
     flatTopics,
     newTargets,
     dueToday,
@@ -512,6 +638,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     awardXp,
     findNode,
     refreshUserOverrides,
+    setStudyMode,
+    setScheduleMode,
+    setTestSeriesStatus,
+    saveTestMarks,
+    aggregatedUpcoming,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -530,5 +661,4 @@ export const statusMeta: Record<Status, { label: string; dot: string; text: stri
   mastered: { label: "Mastered", dot: "bg-mint", text: "text-foreground" },
 };
 
-// Re-export for consumers.
 export type { NodeType } from "./mock-syllabus";

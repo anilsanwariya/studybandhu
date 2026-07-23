@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { StageBadge } from "@/components/StageBadge";
 import { useStore } from "@/lib/store";
 import { levelFromXp } from "@/lib/level";
-import type { SyllabusNode, Status } from "@/lib/mock-syllabus";
+import type { SyllabusNode, Status, Stage } from "@/lib/mock-syllabus";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Flame, Zap, Target, TrendingUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { THEME_COLORS } from "@/lib/theme";
 
@@ -99,21 +101,30 @@ function ProgressPage() {
   const info = levelFromXp(xp);
 
   // Filter States
+  const [stageFilter, setStageFilter] = useState<"all" | Stage>("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [chapterFilter, setChapterFilter] = useState("all");
 
+  const matchesStage = (n: SyllabusNode): boolean =>
+    stageFilter === "all" ? true : (n.stages ?? []).includes(stageFilter);
+
+  const stagedTopics = useMemo(
+    () => (stageFilter === "all" ? flatTopics : flatTopics.filter(matchesStage)),
+    [flatTopics, stageFilter],
+  );
+
   const data = useMemo(() => {
     const counts = { unread: 0, "first-read": 0, "needs-revision": 0, mastered: 0 };
-    flatTopics.forEach((n) => counts[n.status]++);
+    stagedTopics.forEach((n) => counts[n.status]++);
     return [
       { name: "Mastered", value: counts.mastered, color: PASTELS.mastered },
       { name: "First Read", value: counts["first-read"], color: PASTELS["first-read"] },
       { name: "Needs Revision", value: counts["needs-revision"], color: PASTELS["needs-revision"] },
       { name: "Unread", value: counts.unread, color: PASTELS.unread },
     ];
-  }, [flatTopics]);
+  }, [stagedTopics]);
 
-  const total = flatTopics.length;
+  const total = stagedTopics.length;
   const mastered = data.find((d) => d.name === "Mastered")?.value ?? 0;
   const pct = total ? Math.round((mastered / total) * 100) : 0;
 
@@ -133,22 +144,25 @@ function ProgressPage() {
     };
     collectAtDepth(tree);
 
-    return subjectNodes.map((s) => {
-      const list: SyllabusNode[] = [];
-      collectTopics(s.node, list);
-      const masteredN = list.filter((n) => n.status === "mastered").length;
-      const firstRead = list.filter((n) => n.status === "first-read" || n.status === "needs-revision").length;
-      return {
-        id: s.node.id,
-        title: s.node.title,
-        total: list.length,
-        mastered: masteredN,
-        firstRead,
-        pct: list.length ? Math.round(((masteredN + firstRead * 0.5) / list.length) * 100) : 0,
-        themeIndex: s.index,
-      };
-    });
-  }, [tree, subjectDepth]);
+    return subjectNodes
+      .map((s) => {
+        const list: SyllabusNode[] = [];
+        collectTopics(s.node, list);
+        const filtered = stageFilter === "all" ? list : list.filter(matchesStage);
+        const masteredN = filtered.filter((n) => n.status === "mastered").length;
+        const firstRead = filtered.filter((n) => n.status === "first-read" || n.status === "needs-revision").length;
+        return {
+          id: s.node.id,
+          title: s.node.title,
+          total: filtered.length,
+          mastered: masteredN,
+          firstRead,
+          pct: filtered.length ? Math.round(((masteredN + firstRead * 0.5) / filtered.length) * 100) : 0,
+          themeIndex: s.index,
+        };
+      })
+      .filter((s) => s.total > 0);
+  }, [tree, subjectDepth, stageFilter]);
 
   // Dropdown Extractors
   const subjectsList = useMemo(() => tree.map((n) => ({ id: n.id, title: n.title })), [tree]);
@@ -164,9 +178,10 @@ function ProgressPage() {
     return allFlatTopics.filter((t) => {
       const matchSubject = subjectFilter === "all" || t.subjectId === subjectFilter;
       const matchChapter = chapterFilter === "all" || t.chapterId === chapterFilter;
-      return matchSubject && matchChapter;
+      const matchStage = stageFilter === "all" || (t.stages ?? []).includes(stageFilter);
+      return matchSubject && matchChapter && matchStage;
     });
-  }, [allFlatTopics, subjectFilter, chapterFilter]);
+  }, [allFlatTopics, subjectFilter, chapterFilter, stageFilter]);
 
   return (
     <AppShell>
@@ -184,6 +199,15 @@ function ProgressPage() {
           Test XP toast
         </Button>
       </header>
+
+      {/* Stage segmented control */}
+      <Tabs value={stageFilter} onValueChange={(v) => setStageFilter(v as "all" | Stage)} className="mb-6">
+        <TabsList className="bg-white/50 backdrop-blur border border-white/60 rounded-full p-1 h-auto">
+          <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-white text-xs">Combined</TabsTrigger>
+          <TabsTrigger value="prelims" className="rounded-full data-[state=active]:bg-white text-xs">Prelims</TabsTrigger>
+          <TabsTrigger value="mains" className="rounded-full data-[state=active]:bg-white text-xs">Mains</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat icon={<Flame className="h-4 w-4" />} label="Current streak" value={`${streak} days`} tint="peach" />
@@ -383,6 +407,7 @@ function MasteryTopicCard({ topic, tree }: { topic: FlatTopic; tree: SyllabusNod
           >
             {topic.type}
           </span>
+          <StageBadge stages={topic.stages} />
           {topic.excluded && (
             <span className="bg-slate-200/80 text-slate-600 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
               excluded

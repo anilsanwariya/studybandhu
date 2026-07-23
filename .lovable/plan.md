@@ -1,52 +1,68 @@
-## Admin syllabus editor: type changes, cascade-promote on delete, multi-select
+## Multi-Stage Exams + Test Series Architecture
 
-Enhance `src/routes/admin.index.tsx` so admins can restructure the tree more freely while keeping the fixed 4-level schema (Subject > Chapter > Topic > Subtopic) as the depth ceiling.
+Frontend-only mock-data implementation across 4 modules. No DB migrations yet — everything lives in the store + localStorage so the UI is testable immediately. Backend wiring (AI PDF parse, real test-series tables) comes later.
 
-### 1. Change a node's type (level)
+### Module 1 — Types & Store
 
-On each `NodeRow`, add a small level selector (compact dropdown showing the current label — Subject / Chapter / Topic / Subtopic).
+**`src/lib/mock-syllabus.ts`**
+- Add `stages?: ('prelims' | 'mains')[]` to `SyllabusNode`.
+- Export new types: `Intent = 'prelims' | 'mains' | 'both'`, `BucketItem = { id: string; intent: Intent }`, `TestSeries`, `Test`.
+- Add mock `TEST_SERIES_SEED` (2–3 series, mix of statuses, past + future tests, overlapping `mappedTopicIds`) so High-Yield badges are demonstrable.
 
-- Changing the level changes that node's `depth` and re-cascades depth for all descendants (children shift by the same delta).
-- Guards:
-  - Final depth of the node and every descendant must stay within `0..3`. If a change would push any subtopic past depth 3, block it with a toast ("Would exceed subtopic level — remove deeper items first").
-  - When promoting to a shallower level (e.g. Chapter → Subject), the node is re-parented to the correct ancestor so its new depth matches its parent chain: promoting to Subject moves it to the tree root; promoting a Subtopic to Topic moves it under its current chapter; etc. Position among new siblings = right after its former parent.
-  - When demoting to a deeper level (e.g. Subject → Chapter), it becomes a child of its previous sibling (nearest preceding node at the required parent depth). If no valid parent exists, block with a toast.
-- `node_type` is rewritten from `SCHEMA[newDepth]` for the node and every descendant.
+**`src/lib/auth.tsx` (`UserProfile`)**
+- Add `studyMode?: 'prelims' | 'mains' | 'both'` (default `'both'`) and `scheduleMode?: 'self-paced' | 'test-series'` (default `'self-paced'`). Persist to `user_profiles` writes if the column exists; otherwise stash in localStorage keyed by user id (safer — no schema change this pass).
 
-### 2. Delete cascade → promote children
+**`src/lib/store.tsx`**
+- Migrate `bucket: string[]` → `bucket: BucketItem[]`. Add localStorage migration that lifts legacy string ids to `{ id, intent: 'both' }`.
+- `addToBucket(id, intent='both')`, `removeFromBucket(id)`, `bucketNodes` returns `(SyllabusNode & { intent })[]`.
+- New state slice `testSeries: TestSeries[]` seeded from mock, with `setTestSeriesStatus(id, status)`, `saveTestMarks(seriesId, testId, marks, maxMarks)`, `setScheduleMode(mode)`, `setStudyMode(mode)`. Persist to a new `sb-test-series-{userId}` localStorage key.
+- Merge `stages` from mock onto topic nodes by id after tree loads (since DB nodes don't have it yet) so P/M badges show on real syllabus data.
 
-Replace the current "delete node and all descendants" behavior with "delete this node, promote its children up one level":
+### Module 2 — Prelims/Mains everywhere
 
-- Removing a Subject: each child Chapter becomes a Subject at the tree root (in place of the deleted subject, preserving order). Their descendants shift up by one depth too (Topic → Chapter, Subtopic → Topic).
-- Same rule applies at any level. Subtopics of a deleted Topic become Topics under the Topic's former chapter.
-- All promoted nodes get their `node_type` rewritten to match new depth.
-- Trash icon still triggers this; keep a confirm for multi-select but single-node delete stays one-click (matches current UX).
+- New tiny `<StageBadge stages={...} />` component (P / M / P+M pill), reused in `MorningIntent`, `syllabus`, `revisions`, `progress`.
+- `MorningIntent` `+` intercept: when `user.studyMode === 'both'` and topic has both stages, open a shadcn `Dialog` (bottom-sheet feel on mobile via `max-w-md` + `sm:` positioning) with 3 buttons → calls `addToBucket(id, intent)`. Otherwise add directly with the natural intent (`prelims` / `mains` / `both`).
+- `progress.tsx`: `Tabs` at top (Combined / Prelims / Mains). Filter helper `nodeMatchesStage(node, stage)` — a node matches when itself or any descendant contains that stage. Donut, subject bars, and topic list all pipe through the filter.
 
-### 3. Multi-select edit & delete
+### Module 3 — `/schedule` route
 
-Add selection state at the editor level:
+New file `src/routes/schedule.tsx` (registered via file-based routing).
 
-- Checkbox on each `NodeRow` (leftmost). A toolbar appears above the tree when >=1 row is selected: **selected count**, **Change level to…** (Subject/Chapter/Topic/Subtopic), **Delete selected**, **Clear**.
-- Bulk change-level runs the same guard logic per node; nodes that would violate depth bounds are skipped and reported in a single toast summary ("3 changed, 2 skipped").
-- Bulk delete runs the cascade-promote rule per node, processed deepest-first so promotions don't collide.
-- Selecting a parent does NOT auto-select children — each row is independent, but a "Select subtree" affordance (shift-click on the checkbox) selects the node plus all descendants for convenience.
+- Head metadata (unique title/desc, matches directive).
+- Top segmented toggle: Self-Paced / Test Series Directed → `setScheduleMode`.
+- **Manage Subscriptions**: card list of series. Row = title, status pill, status dropdown (`Select` → active/paused/completed). "View completed" toggle unhides completed rows.
+- **Master Timeline**: flat sort of all tests from `active` series by date asc. Grouped visually by month header.
+- **Test Card**: date chip, title, parent series name, progress bar `mastered / total` computed from mapped topics via `findNode`.
+- **Enter Marks**: shown when `new Date(test.date) < now`. Dialog with number inputs → `saveTestMarks`.
+- **Upload Schedule**: dialog with drag-and-drop dropzone (visual only; on drop just toast "Parsing coming soon").
 
-### 4. Save flow
+### Module 4 — Morning Intent aggregation
 
-No schema changes. The existing Save button already deletes and re-inserts all rows for the exam with fresh `depth` / `node_type` / `parent_id` / `sort_order`, so all the above only needs to keep the in-memory `tree` valid before Save. AI-parse and existing add/rename paths are unchanged.
+- When `scheduleMode === 'test-series'`:
+  - For each `active` series, find first test with `date >= today`.
+  - Union `mappedTopicIds`, tally counts across those tests.
+  - Replace `newTargets` / `dueToday` data sources with topic nodes resolved from that union; keep the same card UI + rating flow.
+  - Topic card gains a `High Yield 🔥` glowing badge (subtle amber ring + pulse) when count > 1.
+  - Top banner: "Targeting upcoming tests · next in Nd Hh" (nearest future test countdown, live-updating each minute).
+- Self-paced mode = current behavior untouched.
 
-### Out of scope
+### Files touched
 
-- No changes to student-facing routes, store, or server functions.
-- No changes to the schema constant (still Subject > Chapter > Topic > Subtopic).
-- No undo/redo — admins re-edit and Save.
+- `src/lib/mock-syllabus.ts` (types + seed)
+- `src/lib/auth.tsx` (profile fields + setters)
+- `src/lib/store.tsx` (bucket shape, test-series slice, stage merge)
+- `src/components/StageBadge.tsx` (new)
+- `src/components/MorningIntent.tsx` (intent picker, test-series mode, high-yield, banner)
+- `src/routes/schedule.tsx` (new)
+- `src/routes/progress.tsx` (stage tabs + filter)
+- `src/routes/syllabus.tsx` (stage badges on topics)
+- `src/routes/revisions.tsx` (stage badges, respect bucket intent)
+- `src/components/AppShell.tsx` (add `/schedule` to bottom nav)
 
-### Technical notes
+### Out of scope this pass
 
-- Single file: `src/routes/admin.index.tsx`.
-- New helpers next to `flattenAi` / `countAll`:
-  - `changeNodeLevel(tree, path, newDepth)` — returns a new tree or an error string.
-  - `deleteAndPromote(tree, path)` — returns a new tree.
-  - `rewriteTypes(nodes, depth)` — recursive, sets `node_type = SCHEMA[depth]` and `depth` for the subtree.
-- Selection state: `const [selected, setSelected] = useState<Set<string>>(new Set())` keyed by node id; cleared on tree reload / save.
-- `NodeRow` gets `selected`, `onToggleSelect`, `onChangeLevel` props alongside existing ones.
+- Supabase schema changes for `stages`, test series, or user schedule fields (mock/localStorage only).
+- Actual PDF parsing for uploaded schedules.
+- Editing `stages` on nodes in the admin editor.
+
+Confirm and I'll build it.
