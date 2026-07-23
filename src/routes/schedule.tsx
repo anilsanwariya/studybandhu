@@ -53,6 +53,9 @@ function ScheduleView() {
     setTestSeriesStatus,
     saveTestMarks,
     findNode,
+    addTestSeries,
+    deleteTestSeries,
+    flatTopics,
   } = useStore();
 
   const [showCompleted, setShowCompleted] = useState(false);
