@@ -17,7 +17,7 @@ import type {
   TestSeries,
   Test,
 } from "./mock-syllabus";
-import { LEVEL_SCHEMA, stagesForTopicId, seedTestSeries } from "./mock-syllabus";
+import { LEVEL_SCHEMA, stagesForTopicId } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
