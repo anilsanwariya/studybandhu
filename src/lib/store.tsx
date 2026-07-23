@@ -17,7 +17,7 @@ import type {
   TestSeries,
   Test,
 } from "./mock-syllabus";
-import { LEVEL_SCHEMA, stagesForTopicId, seedTestSeries } from "./mock-syllabus";
+import { LEVEL_SCHEMA, stagesForTopicId } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth";
 import { levelFromXp } from "./level";
@@ -89,6 +89,12 @@ interface StoreCtx extends StoreState {
   setStudyMode: (m: StudyMode) => void;
   setScheduleMode: (m: ScheduleMode) => void;
   setTestSeriesStatus: (id: string, status: TestSeries["status"]) => void;
+  addTestSeries: (series: {
+    title: string;
+    status?: TestSeries["status"];
+    tests: Array<Omit<Test, "id"> & { id?: string }>;
+  }) => void;
+  deleteTestSeries: (id: string) => void;
   saveTestMarks: (seriesId: string, testId: string, marks: number, maxMarks: number) => void;
   /** Aggregate of upcoming (nearest future) test per active series. */
   aggregatedUpcoming: { topicIdCounts: Map<string, number>; nextTest: (Test & { seriesTitle: string }) | null };
@@ -340,19 +346,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       persistLoaded.current = true;
 
-      // Seed test series if none persisted yet.
+      // Load persisted test series (no seed data — user uploads their own).
       try {
         const raw = localStorage.getItem(seriesKey(user.id));
-        if (raw) {
-          setTestSeries(JSON.parse(raw) as TestSeries[]);
-        } else {
-          const topicIds: string[] = [];
-          walk(built, (n) => {
-            if (n.depth === 2) topicIds.push(n.id);
-          });
-          const seeded = seedTestSeries(topicIds);
-          setTestSeries(seeded);
-        }
+        setTestSeries(raw ? (JSON.parse(raw) as TestSeries[]) : []);
       } catch {
         setTestSeries([]);
       }
@@ -410,7 +407,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Persist test series changes.
   useEffect(() => {
     if (!user) return;
-    if (testSeries.length === 0) return;
     try {
       localStorage.setItem(seriesKey(user.id), JSON.stringify(testSeries));
     } catch {
@@ -582,6 +578,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTestSeries((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
   }, []);
 
+  const addTestSeries = useCallback(
+    (series: { title: string; status?: TestSeries["status"]; tests: Array<Omit<Test, "id"> & { id?: string }> }) => {
+      const id = `series-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const withIds: TestSeries = {
+        id,
+        title: series.title,
+        status: series.status ?? "active",
+        tests: series.tests.map((t, i) => ({
+          ...t,
+          id: t.id || `${id}-t${i}-${Math.random().toString(36).slice(2, 6)}`,
+        })),
+      };
+      setTestSeries((prev) => [...prev, withIds]);
+    },
+    [],
+  );
+
+  const deleteTestSeries = useCallback((id: string) => {
+    setTestSeries((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+
   const saveTestMarks = useCallback((seriesId: string, testId: string, marks: number, maxMarks: number) => {
     setTestSeries((prev) =>
       prev.map((s) =>
@@ -641,6 +659,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStudyMode,
     setScheduleMode,
     setTestSeriesStatus,
+    addTestSeries,
+    deleteTestSeries,
     saveTestMarks,
     aggregatedUpcoming,
   };
