@@ -200,6 +200,15 @@ function ProgressPage() {
         </Button>
       </header>
 
+      {/* Stage segmented control */}
+      <Tabs value={stageFilter} onValueChange={(v) => setStageFilter(v as "all" | Stage)} className="mb-6">
+        <TabsList className="bg-white/50 backdrop-blur border border-white/60 rounded-full p-1 h-auto">
+          <TabsTrigger value="all" className="rounded-full data-[state=active]:bg-white text-xs">Combined</TabsTrigger>
+          <TabsTrigger value="prelims" className="rounded-full data-[state=active]:bg-white text-xs">Prelims</TabsTrigger>
+          <TabsTrigger value="mains" className="rounded-full data-[state=active]:bg-white text-xs">Mains</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat icon={<Flame className="h-4 w-4" />} label="Current streak" value={`${streak} days`} tint="peach" />
         <Stat icon={<Zap className="h-4 w-4" />} label={`Level ${info.level}`} value={info.rank} tint="lavender" />
