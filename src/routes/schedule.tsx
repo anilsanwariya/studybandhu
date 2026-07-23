@@ -339,24 +339,97 @@ function MarksDialog({
   );
 }
 
-function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface ParsedSeriesResult {
+  title: string;
+  tests: { title: string; date: string; mappedTopicIds: string[] }[];
+}
+
+function UploadDialog({
+  open,
+  onClose,
+  topics,
+  onParsed,
+}: {
+  open: boolean;
+  onClose: () => void;
+  topics: { id: string; title: string }[];
+  onParsed: (series: ParsedSeriesResult[]) => void;
+}) {
   const [dragging, setDragging] = useState(false);
-  const [dropped, setDropped] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "parsing" | "done" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ParsedSeriesResult[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (f: File | null | undefined) => {
+  const reset = () => {
+    setFileName(null);
+    setStatus("idle");
+    setErrorMsg(null);
+    setPreview(null);
+  };
+
+  const handleFile = async (f: File | null | undefined) => {
     if (!f) return;
-    setDropped(f.name);
-    toast.success(`Received ${f.name}. AI parsing coming soon.`);
+    if (f.size > 20 * 1024 * 1024) {
+      toast.error("PDF too large (max 20 MB).");
+      return;
+    }
+    setFileName(f.name);
+    setStatus("parsing");
+    setErrorMsg(null);
+    setPreview(null);
+
+    try {
+      const buf = await f.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const fileBase64 = btoa(bin);
+
+      const { parseSchedulePdf } = await import("@/lib/schedule-ai.functions");
+      const res = await parseSchedulePdf({
+        data: { fileBase64, mimeType: f.type || "application/pdf", topics },
+      });
+      const series = res.series ?? [];
+      if (series.length === 0) {
+        setStatus("error");
+        setErrorMsg("Couldn't find any tests in that PDF. Try a clearer schedule.");
+        return;
+      }
+      setPreview(series);
+      setStatus("done");
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg(err instanceof Error ? err.message : "Parsing failed. Try again.");
+    }
+  };
+
+  const handleImport = () => {
+    if (!preview) return;
+    onParsed(preview);
+    const total = preview.reduce((a, s) => a + s.tests.length, 0);
+    toast.success(`Imported ${preview.length} series (${total} tests).`);
+    reset();
+    onClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          reset();
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="glass-strong z-[100] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Upload Test Series Schedule</DialogTitle>
           <DialogDescription className="text-xs">
-            Drop a PDF of your test series calendar. Parsing coming soon — for now we'll just show what you uploaded.
+            Drop a PDF of your test series calendar. AI will extract tests, dates, and map
+            them to your syllabus topics.
           </DialogDescription>
         </DialogHeader>
         <input
@@ -371,6 +444,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
         />
         <button
           type="button"
+          disabled={status === "parsing"}
           onClick={() => inputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
@@ -383,15 +457,29 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             handleFile(e.dataTransfer.files?.[0]);
           }}
           className={cn(
-            "w-full border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer",
+            "w-full border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer disabled:cursor-wait",
             dragging ? "border-primary bg-primary/10" : "border-white/60 bg-white/30 hover:bg-white/50",
           )}
         >
-          {dropped ? (
+          {status === "parsing" ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <div className="text-sm font-medium">Parsing {fileName}…</div>
+              <div className="text-xs text-muted-foreground">This can take 20–40s for large PDFs.</div>
+            </div>
+          ) : status === "done" && preview ? (
             <div className="flex flex-col items-center gap-2">
               <CheckCircle2 className="h-8 w-8 text-emerald-600" />
-              <div className="text-sm font-medium">{dropped}</div>
-              <div className="text-xs text-muted-foreground">Queued for parsing.</div>
+              <div className="text-sm font-medium">Found {preview.length} series</div>
+              <div className="text-xs text-muted-foreground">
+                {preview.reduce((a, s) => a + s.tests.length, 0)} tests · click Import below.
+              </div>
+            </div>
+          ) : status === "error" ? (
+            <div className="flex flex-col items-center gap-2">
+              <FileUp className="h-8 w-8 text-red-500" />
+              <div className="text-sm font-medium text-red-600">{errorMsg}</div>
+              <div className="text-xs text-muted-foreground">Click to try a different file.</div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
@@ -401,11 +489,43 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           )}
         </button>
+
+        {preview && (
+          <div className="max-h-48 overflow-auto rounded-xl bg-white/40 p-3 text-xs space-y-2">
+            {preview.map((s, i) => (
+              <div key={i}>
+                <div className="font-semibold">{s.title}</div>
+                <ul className="text-muted-foreground pl-3 list-disc">
+                  {s.tests.slice(0, 5).map((t, j) => (
+                    <li key={j}>
+                      {t.date} · {t.title}
+                      {t.mappedTopicIds.length > 0 && (
+                        <span className="ml-1 text-[10px] text-emerald-700">
+                          ({t.mappedTopicIds.length} topics)
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                  {s.tests.length > 5 && <li>+ {s.tests.length - 5} more…</li>}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+
         <DialogFooter>
-          <Button variant="outline" className="rounded-full" onClick={onClose}>Close</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => { reset(); onClose(); }}>
+            Cancel
+          </Button>
+          {preview && (
+            <Button className="rounded-full" onClick={handleImport}>
+              Import
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
 
