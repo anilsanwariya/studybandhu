@@ -244,7 +244,14 @@ function ScheduleView() {
       />
 
       {/* Upload dialog */}
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        topics={flatTopics.map((t) => ({ id: t.id, title: t.title }))}
+        onParsed={(series) => {
+          for (const s of series) addTestSeries(s);
+        }}
+      />
     </AppShell>
   );
 }
