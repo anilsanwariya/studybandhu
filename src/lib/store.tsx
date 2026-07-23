@@ -89,6 +89,8 @@ interface StoreCtx extends StoreState {
   setStudyMode: (m: StudyMode) => void;
   setScheduleMode: (m: ScheduleMode) => void;
   setTestSeriesStatus: (id: string, status: TestSeries["status"]) => void;
+  addTestSeries: (series: Omit<TestSeries, "id" | "status"> & { status?: TestSeries["status"] }) => void;
+  deleteTestSeries: (id: string) => void;
   saveTestMarks: (seriesId: string, testId: string, marks: number, maxMarks: number) => void;
   /** Aggregate of upcoming (nearest future) test per active series. */
   aggregatedUpcoming: { topicIdCounts: Map<string, number>; nextTest: (Test & { seriesTitle: string }) | null };
