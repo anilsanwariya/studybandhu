@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { StageBadge } from "@/components/StageBadge";
 import { useStore } from "@/lib/store";
 import { levelFromXp } from "@/lib/level";
-import type { SyllabusNode, Status } from "@/lib/mock-syllabus";
+import type { SyllabusNode, Status, Stage } from "@/lib/mock-syllabus";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Flame, Zap, Target, TrendingUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { THEME_COLORS } from "@/lib/theme";
 
