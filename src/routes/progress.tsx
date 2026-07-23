@@ -407,6 +407,7 @@ function MasteryTopicCard({ topic, tree }: { topic: FlatTopic; tree: SyllabusNod
           >
             {topic.type}
           </span>
+          <StageBadge stages={topic.stages} />
           {topic.excluded && (
             <span className="bg-slate-200/80 text-slate-600 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
               excluded
