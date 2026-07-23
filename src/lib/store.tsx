@@ -655,6 +655,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStudyMode,
     setScheduleMode,
     setTestSeriesStatus,
+    addTestSeries,
+    deleteTestSeries,
     saveTestMarks,
     aggregatedUpcoming,
   };
