@@ -321,6 +321,13 @@ function MarksDialog({
 function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (f: File | null | undefined) => {
+    if (!f) return;
+    setDropped(f.name);
+    toast.success(`Received ${f.name}. AI parsing coming soon.`);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -331,7 +338,19 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             Drop a PDF of your test series calendar. Parsing coming soon — for now we'll just show what you uploaded.
           </DialogDescription>
         </DialogHeader>
-        <div
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            handleFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
             setDragging(true);
@@ -340,15 +359,11 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) {
-              setDropped(f.name);
-              toast.success(`Received ${f.name}. AI parsing coming soon.`);
-            }
+            handleFile(e.dataTransfer.files?.[0]);
           }}
           className={cn(
-            "border-2 border-dashed rounded-2xl p-8 text-center transition-all",
-            dragging ? "border-primary bg-primary/10" : "border-white/60 bg-white/30",
+            "w-full border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer",
+            dragging ? "border-primary bg-primary/10" : "border-white/60 bg-white/30 hover:bg-white/50",
           )}
         >
           {dropped ? (
@@ -361,10 +376,10 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             <div className="flex flex-col items-center gap-2">
               <FileUp className="h-8 w-8 text-muted-foreground" />
               <div className="text-sm font-medium">Drop your schedule PDF here</div>
-              <div className="text-xs text-muted-foreground">or click to browse (soon)</div>
+              <div className="text-xs text-muted-foreground">or click to browse</div>
             </div>
           )}
-        </div>
+        </button>
         <DialogFooter>
           <Button variant="outline" className="rounded-full" onClick={onClose}>Close</Button>
         </DialogFooter>
@@ -372,3 +387,4 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
     </Dialog>
   );
 }
+
