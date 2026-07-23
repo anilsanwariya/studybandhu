@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
@@ -273,7 +273,7 @@ function MarksDialog({
   const [marks, setMarks] = useState("");
   const [maxMarks, setMaxMarks] = useState("");
 
-  useMemo(() => {
+  useEffect(() => {
     if (target) {
       setMarks(target.test.marks != null ? String(target.test.marks) : "");
       setMaxMarks(target.test.maxMarks != null ? String(target.test.maxMarks) : "");
