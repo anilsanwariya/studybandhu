@@ -53,6 +53,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { THEME_COLORS } from "@/lib/theme";
+import { StageBadge } from "@/components/StageBadge";
 import { toast } from "sonner";
 import type { Status } from "@/lib/mock-syllabus";
 
@@ -325,6 +326,7 @@ function TreeNode({
               {node.type}
             </span>
             {hasChildren && <span className="text-[10px] font-medium">• {node.children!.length} items</span>}
+            {node.depth === 2 && <StageBadge stages={node.stages} />}
             {isUserNode && (
               <span className="inline-flex items-center gap-0.5 bg-slate-200/80 text-slate-800 rounded-full px-1.5 py-0.5 text-[9px] font-medium ml-1">
                 <Sparkles className="h-2 w-2" /> yours

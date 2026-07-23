@@ -117,6 +117,12 @@ function RevisionsPage() {
           <div className="flex items-center justify-center gap-2 mb-4">
             <StatusDot status={current.status} />
             <span className="text-xs uppercase tracking-widest text-muted-foreground">{current.type}</span>
+            <StageBadge stages={current.stages} />
+            {current.intent && current.intent !== "both" && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-foreground/60">
+                · {current.intent}
+              </span>
+            )}
             {current.revisionCount ? (
               <span className="glass rounded-full text-[10px] font-medium px-2 py-0.5">
                 Revised {current.revisionCount}×
