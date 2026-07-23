@@ -401,7 +401,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Persist test series changes.
   useEffect(() => {
     if (!user) return;
-    if (testSeries.length === 0) return;
     try {
       localStorage.setItem(seriesKey(user.id), JSON.stringify(testSeries));
     } catch {
