@@ -574,6 +574,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTestSeries((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
   }, []);
 
+  const addTestSeries = useCallback(
+    (series: Omit<TestSeries, "id" | "status"> & { status?: TestSeries["status"] }) => {
+      const id = `series-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const withIds: TestSeries = {
+        id,
+        title: series.title,
+        status: series.status ?? "active",
+        tests: series.tests.map((t, i) => ({
+          ...t,
+          id: t.id || `${id}-t${i}-${Math.random().toString(36).slice(2, 6)}`,
+        })),
+      };
+      setTestSeries((prev) => [...prev, withIds]);
+    },
+    [],
+  );
+
+  const deleteTestSeries = useCallback((id: string) => {
+    setTestSeries((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+
   const saveTestMarks = useCallback((seriesId: string, testId: string, marks: number, maxMarks: number) => {
     setTestSeries((prev) =>
       prev.map((s) =>
