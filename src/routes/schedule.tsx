@@ -150,6 +150,17 @@ function ScheduleView() {
                   <DropdownMenuItem onClick={() => setTestSeriesStatus(s.id, "active")}>Mark active</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setTestSeriesStatus(s.id, "paused")}>Pause</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setTestSeriesStatus(s.id, "completed")}>Mark completed</DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600"
+                    onClick={() => {
+                      if (confirm(`Delete "${s.title}"? This cannot be undone.`)) {
+                        deleteTestSeries(s.id);
+                        toast.success("Series deleted");
+                      }
+                    }}
+                  >
+                    Delete
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
