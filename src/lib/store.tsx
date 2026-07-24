@@ -273,7 +273,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const nodeMap = persisted?.nodes ?? {};
 
       const applyPersist = (n: SyllabusNode): SyllabusNode => {
-        const withStages = n.depth === 2 ? { ...n, stages: stagesForTopicId(n.id) } : n;
+        const dbStages = (n.stages && n.stages.length ? n.stages : undefined) as Stage[] | undefined;
+        const withStages = n.depth === 2 ? { ...n, stages: dbStages ?? stagesForTopicId(n.id) } : n;
         const saved = nodeMap[n.id];
         if (!saved) return withStages;
         return {
