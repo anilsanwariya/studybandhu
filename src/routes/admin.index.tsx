@@ -237,6 +237,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             node_type: schema[depth] ?? n.node_type,
             sort_order: i,
             depth,
+            stages: depth === 2 ? (n.stages ?? []) : [],
           });
           walk(n.children, id, depth + 1);
         });
