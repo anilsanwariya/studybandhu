@@ -29,6 +29,7 @@ interface SyllabusDbRow {
   node_type: string;
   sort_order: number;
   depth: number;
+  stages?: string[] | null;
 }
 interface UserOverrideRow {
   id: string;
