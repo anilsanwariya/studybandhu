@@ -164,6 +164,8 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [uploadStage, setUploadStage] = useState<"prelims" | "mains" | "both">("prelims");
+  const [appendMode, setAppendMode] = useState(true);
   const parseFn = useServerFn(parseSyllabusPdf);
   const schema = SCHEMA as unknown as string[];
 
