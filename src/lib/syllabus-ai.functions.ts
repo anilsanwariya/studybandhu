@@ -53,9 +53,7 @@ Rules:
           content: [
             {
               type: "text",
-              text: data.hint
-                ? `Context: ${data.hint}\n\nExtract the syllabus as JSON using Subject > Chapter > Topic > Subtopic.`
-                : `Extract the syllabus as JSON using Subject > Chapter > Topic > Subtopic.`,
+              text: `${data.hint ? `Context: ${data.hint}\n\n` : ""}Extract the ${data.stage === "both" ? "combined" : data.stage.toUpperCase()} syllabus as JSON using Subject > Chapter > Topic > Subtopic.${data.stage !== "both" ? ` Only include content that belongs to the ${data.stage.toUpperCase()} stage of this exam.` : ""}`,
             },
             {
               type: "file",
