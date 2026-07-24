@@ -209,10 +209,12 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
       const base64 = btoa(binary);
-      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}` } });
-      const flat = flattenAi(result.nodes ?? [], schema, 0);
-      setTree(flat);
-      toast.success(`Parsed ${countAll(flat)} items. Review and save.`);
+      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}`, stage: uploadStage } });
+      const topicStages = uploadStage === "both" ? ["prelims", "mains"] : [uploadStage];
+      const parsed = flattenAi(result.nodes ?? [], schema, 0, topicStages);
+      const next = appendMode && tree.length > 0 ? mergeTrees(tree, parsed) : parsed;
+      setTree(next);
+      toast.success(`Parsed ${countAll(parsed)} items (${uploadStage}). ${appendMode ? "Merged with existing." : "Replaced tree."} Review and save.`);
     } catch (e: any) {
       toast.error(e.message ?? "Parse failed");
     }
