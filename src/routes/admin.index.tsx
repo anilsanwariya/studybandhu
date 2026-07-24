@@ -33,6 +33,7 @@ interface DbNode {
   node_type: string;
   sort_order: number;
   depth: number;
+  stages: string[];
 }
 interface TreeNode extends DbNode {
   children: TreeNode[];
