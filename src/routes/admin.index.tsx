@@ -544,7 +544,7 @@ function NodeRow({ node, path, schema, selectedIds, onToggleSelect, onUpdate, on
   );
 }
 
-function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
+function flattenAi(nodes: any[], schema: string[], depth: number, topicStages: string[]): TreeNode[] {
   return nodes.map((n, i) => {
     const label = schema[depth] ?? String(n.type ?? `L${depth}`);
     return {
@@ -554,9 +554,30 @@ function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
       node_type: label,
       sort_order: i,
       depth,
-      children: Array.isArray(n.children) ? flattenAi(n.children, schema, depth + 1) : [],
+      stages: depth === 2 ? [...topicStages] : [],
+      children: Array.isArray(n.children) ? flattenAi(n.children, schema, depth + 1, topicStages) : [],
     };
   });
+}
+
+function mergeTrees(existing: TreeNode[], incoming: TreeNode[]): TreeNode[] {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const byTitle = new Map(existing.map((n) => [norm(n.title), n]));
+  const out: TreeNode[] = existing.map((n) => ({ ...n, children: [...n.children] }));
+  for (const inc of incoming) {
+    const match = byTitle.get(norm(inc.title));
+    if (!match) {
+      out.push(inc);
+    } else {
+      // Union stages on topics
+      if (match.depth === 2) {
+        const set = new Set([...(match.stages ?? []), ...(inc.stages ?? [])]);
+        match.stages = Array.from(set);
+      }
+      match.children = mergeTrees(match.children, inc.children);
+    }
+  }
+  return out;
 }
 function countAll(nodes: TreeNode[]): number {
   return nodes.reduce((s, n) => s + 1 + countAll(n.children), 0);
