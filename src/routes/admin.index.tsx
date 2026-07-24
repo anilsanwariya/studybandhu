@@ -273,7 +273,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
 
   const addChild = (path: number[] | null, depth: number) => {
     const label = schema[depth] ?? `L${depth}`;
-    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, children: [] };
+    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, stages: [], children: [] };
     if (!path) { setTree([...tree, node]); return; }
     updateNodeAt(path, (n) => ({ ...n, children: [...n.children, node] }));
   };
