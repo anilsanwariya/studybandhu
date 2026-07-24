@@ -417,11 +417,28 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             {schema.join(" › ")}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          <div className="glass rounded-full px-2 py-1 flex items-center gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground pl-2">Stage</Label>
+            <Select value={uploadStage} onValueChange={(v) => setUploadStage(v as "prelims" | "mains" | "both")}>
+              <SelectTrigger className="h-7 w-[110px] bg-white/70 border-white/70 rounded-full text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="prelims" className="text-xs">Prelims</SelectItem>
+                <SelectItem value="mains" className="text-xs">Mains</SelectItem>
+                <SelectItem value="both" className="text-xs">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="glass rounded-full px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer select-none">
+            <Checkbox checked={appendMode} onCheckedChange={(v) => setAppendMode(!!v)} />
+            <span>Merge with existing</span>
+          </label>
           <label className="inline-flex">
             <input type="file" accept="application/pdf" hidden onChange={(e) => e.target.files?.[0] && handlePdf(e.target.files[0])} />
             <Button variant="outline" className="rounded-full bg-white/60 gap-2 cursor-pointer" asChild disabled={parsing}>
-              <span>{parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} AI Parse PDF</span>
+              <span>{parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Upload {uploadStage === "both" ? "syllabus" : `${uploadStage} syllabus`}</span>
             </Button>
           </label>
           <Button variant="outline" className="rounded-full bg-white/60 gap-2" onClick={togglePublish}>
