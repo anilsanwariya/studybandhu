@@ -332,6 +332,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             dueToday: false,
             revisionCount: 0,
             nextRevisionAt: null,
+            stages: (r.stages ?? undefined) as Stage[] | undefined,
             children: [...adminKids, ...userKids],
           };
           return [applyPersist(node)];
