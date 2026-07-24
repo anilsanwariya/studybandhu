@@ -16,6 +16,7 @@ import type {
   Intent,
   TestSeries,
   Test,
+  Stage,
 } from "./mock-syllabus";
 import { LEVEL_SCHEMA, stagesForTopicId } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
