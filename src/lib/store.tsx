@@ -16,6 +16,7 @@ import type {
   Intent,
   TestSeries,
   Test,
+  Stage,
 } from "./mock-syllabus";
 import { LEVEL_SCHEMA, stagesForTopicId } from "./mock-syllabus";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +30,7 @@ interface SyllabusDbRow {
   node_type: string;
   sort_order: number;
   depth: number;
+  stages?: string[] | null;
 }
 interface UserOverrideRow {
   id: string;
@@ -229,7 +231,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const [adminRes, userRes, hiddenRes] = await Promise.all([
         supabase
           .from("syllabus_nodes")
-          .select("id, parent_id, title, node_type, sort_order, depth")
+          .select("id, parent_id, title, node_type, sort_order, depth, stages")
           .eq("exam_id", examId)
           .order("sort_order", { ascending: true })
           .order("title", { ascending: true }),
@@ -272,7 +274,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const nodeMap = persisted?.nodes ?? {};
 
       const applyPersist = (n: SyllabusNode): SyllabusNode => {
-        const withStages = n.depth === 2 ? { ...n, stages: stagesForTopicId(n.id) } : n;
+        const dbStages = (n.stages && n.stages.length ? n.stages : undefined) as Stage[] | undefined;
+        const withStages = n.depth === 2 ? { ...n, stages: dbStages ?? stagesForTopicId(n.id) } : n;
         const saved = nodeMap[n.id];
         if (!saved) return withStages;
         return {
@@ -329,6 +332,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             dueToday: false,
             revisionCount: 0,
             nextRevisionAt: null,
+            stages: (r.stages ?? undefined) as Stage[] | undefined,
             children: [...adminKids, ...userKids],
           };
           return [applyPersist(node)];

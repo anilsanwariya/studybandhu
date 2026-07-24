@@ -33,6 +33,7 @@ interface DbNode {
   node_type: string;
   sort_order: number;
   depth: number;
+  stages: string[];
 }
 interface TreeNode extends DbNode {
   children: TreeNode[];
@@ -163,15 +164,17 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [uploadStage, setUploadStage] = useState<"prelims" | "mains" | "both">("prelims");
+  const [appendMode, setAppendMode] = useState(true);
   const parseFn = useServerFn(parseSyllabusPdf);
   const schema = SCHEMA as unknown as string[];
 
   const loadTree = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("syllabus_nodes").select("id, parent_id, title, node_type, sort_order, depth").eq("exam_id", exam.id).order("sort_order");
-    const rows = (data as DbNode[]) ?? [];
+    const { data } = await supabase.from("syllabus_nodes").select("id, parent_id, title, node_type, sort_order, depth, stages").eq("exam_id", exam.id).order("sort_order");
+    const rows = ((data as any[]) ?? []) as DbNode[];
     const byParent = new Map<string | null, TreeNode[]>();
-    const nodes: TreeNode[] = rows.map((r) => ({ ...r, children: [] }));
+    const nodes: TreeNode[] = rows.map((r) => ({ ...r, stages: r.stages ?? [], children: [] }));
     for (const n of nodes) {
       const arr = byParent.get(n.parent_id) ?? [];
       arr.push(n);
@@ -206,10 +209,12 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
       const base64 = btoa(binary);
-      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}` } });
-      const flat = flattenAi(result.nodes ?? [], schema, 0);
-      setTree(flat);
-      toast.success(`Parsed ${countAll(flat)} items. Review and save.`);
+      const result = await parseFn({ data: { fileBase64: base64, mimeType: file.type || "application/pdf", hint: `Exam: ${exam.name}`, stage: uploadStage } });
+      const topicStages = uploadStage === "both" ? ["prelims", "mains"] : [uploadStage];
+      const parsed = flattenAi(result.nodes ?? [], schema, 0, topicStages);
+      const next = appendMode && tree.length > 0 ? mergeTrees(tree, parsed) : parsed;
+      setTree(next);
+      toast.success(`Parsed ${countAll(parsed)} items (${uploadStage}). ${appendMode ? "Merged with existing." : "Replaced tree."} Review and save.`);
     } catch (e: any) {
       toast.error(e.message ?? "Parse failed");
     }
@@ -232,6 +237,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             node_type: schema[depth] ?? n.node_type,
             sort_order: i,
             depth,
+            stages: depth === 2 ? (n.stages ?? []) : [],
           });
           walk(n.children, id, depth + 1);
         });
@@ -272,7 +278,7 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
 
   const addChild = (path: number[] | null, depth: number) => {
     const label = schema[depth] ?? `L${depth}`;
-    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, children: [] };
+    const node: TreeNode = { id: crypto.randomUUID(), parent_id: null, title: `New ${label}`, node_type: label, sort_order: 0, depth, stages: [], children: [] };
     if (!path) { setTree([...tree, node]); return; }
     updateNodeAt(path, (n) => ({ ...n, children: [...n.children, node] }));
   };
@@ -411,11 +417,28 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
             {schema.join(" › ")}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          <div className="glass rounded-full px-2 py-1 flex items-center gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground pl-2">Stage</Label>
+            <Select value={uploadStage} onValueChange={(v) => setUploadStage(v as "prelims" | "mains" | "both")}>
+              <SelectTrigger className="h-7 w-[110px] bg-white/70 border-white/70 rounded-full text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="prelims" className="text-xs">Prelims</SelectItem>
+                <SelectItem value="mains" className="text-xs">Mains</SelectItem>
+                <SelectItem value="both" className="text-xs">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="glass rounded-full px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer select-none">
+            <Checkbox checked={appendMode} onCheckedChange={(v) => setAppendMode(!!v)} />
+            <span>Merge with existing</span>
+          </label>
           <label className="inline-flex">
             <input type="file" accept="application/pdf" hidden onChange={(e) => e.target.files?.[0] && handlePdf(e.target.files[0])} />
             <Button variant="outline" className="rounded-full bg-white/60 gap-2 cursor-pointer" asChild disabled={parsing}>
-              <span>{parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} AI Parse PDF</span>
+              <span>{parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Upload {uploadStage === "both" ? "syllabus" : `${uploadStage} syllabus`}</span>
             </Button>
           </label>
           <Button variant="outline" className="rounded-full bg-white/60 gap-2" onClick={togglePublish}>
@@ -543,7 +566,7 @@ function NodeRow({ node, path, schema, selectedIds, onToggleSelect, onUpdate, on
   );
 }
 
-function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
+function flattenAi(nodes: any[], schema: string[], depth: number, topicStages: string[]): TreeNode[] {
   return nodes.map((n, i) => {
     const label = schema[depth] ?? String(n.type ?? `L${depth}`);
     return {
@@ -553,9 +576,30 @@ function flattenAi(nodes: any[], schema: string[], depth: number): TreeNode[] {
       node_type: label,
       sort_order: i,
       depth,
-      children: Array.isArray(n.children) ? flattenAi(n.children, schema, depth + 1) : [],
+      stages: depth === 2 ? [...topicStages] : [],
+      children: Array.isArray(n.children) ? flattenAi(n.children, schema, depth + 1, topicStages) : [],
     };
   });
+}
+
+function mergeTrees(existing: TreeNode[], incoming: TreeNode[]): TreeNode[] {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const byTitle = new Map(existing.map((n) => [norm(n.title), n]));
+  const out: TreeNode[] = existing.map((n) => ({ ...n, children: [...n.children] }));
+  for (const inc of incoming) {
+    const match = byTitle.get(norm(inc.title));
+    if (!match) {
+      out.push(inc);
+    } else {
+      // Union stages on topics
+      if (match.depth === 2) {
+        const set = new Set([...(match.stages ?? []), ...(inc.stages ?? [])]);
+        match.stages = Array.from(set);
+      }
+      match.children = mergeTrees(match.children, inc.children);
+    }
+  }
+  return out;
 }
 function countAll(nodes: TreeNode[]): number {
   return nodes.reduce((s, n) => s + 1 + countAll(n.children), 0);

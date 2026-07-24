@@ -101,6 +101,7 @@ export type Database = {
           node_type: string
           parent_id: string | null
           sort_order: number
+          stages: string[]
           title: string
         }
         Insert: {
@@ -111,6 +112,7 @@ export type Database = {
           node_type: string
           parent_id?: string | null
           sort_order?: number
+          stages?: string[]
           title: string
         }
         Update: {
@@ -121,6 +123,7 @@ export type Database = {
           node_type?: string
           parent_id?: string | null
           sort_order?: number
+          stages?: string[]
           title?: string
         }
         Relationships: [
