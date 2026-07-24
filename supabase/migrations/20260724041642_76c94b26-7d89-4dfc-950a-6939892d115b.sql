@@ -1,0 +1,1 @@
+ALTER TABLE public.syllabus_nodes ADD COLUMN IF NOT EXISTS stages text[] NOT NULL DEFAULT '{}';
