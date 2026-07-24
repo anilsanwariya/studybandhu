@@ -6,6 +6,7 @@ const InputSchema = z.object({
   fileBase64: z.string().min(10),
   mimeType: z.string().default("application/pdf"),
   hint: z.string().optional(),
+  stage: z.enum(["prelims", "mains", "both"]).default("both"),
 });
 
 const SCHEMA = ["subject", "chapter", "topic", "subtopic"] as const;
