@@ -230,7 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const [adminRes, userRes, hiddenRes] = await Promise.all([
         supabase
           .from("syllabus_nodes")
-          .select("id, parent_id, title, node_type, sort_order, depth")
+          .select("id, parent_id, title, node_type, sort_order, depth, stages")
           .eq("exam_id", examId)
           .order("sort_order", { ascending: true })
           .order("title", { ascending: true }),
