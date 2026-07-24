@@ -171,10 +171,10 @@ function ExamEditor({ exam, onChange }: { exam: Exam; onChange: () => void }) {
 
   const loadTree = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("syllabus_nodes").select("id, parent_id, title, node_type, sort_order, depth").eq("exam_id", exam.id).order("sort_order");
-    const rows = (data as DbNode[]) ?? [];
+    const { data } = await supabase.from("syllabus_nodes").select("id, parent_id, title, node_type, sort_order, depth, stages").eq("exam_id", exam.id).order("sort_order");
+    const rows = ((data as any[]) ?? []) as DbNode[];
     const byParent = new Map<string | null, TreeNode[]>();
-    const nodes: TreeNode[] = rows.map((r) => ({ ...r, children: [] }));
+    const nodes: TreeNode[] = rows.map((r) => ({ ...r, stages: r.stages ?? [], children: [] }));
     for (const n of nodes) {
       const arr = byParent.get(n.parent_id) ?? [];
       arr.push(n);
